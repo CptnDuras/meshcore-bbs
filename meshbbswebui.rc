@@ -1,0 +1,55 @@
+#!/bin/sh
+#
+# PROVIDE: meshbbswebui
+# REQUIRE: LOGIN FILESYSTEMS tailscaled
+# KEYWORD: shutdown
+#
+# meshbbs web UI - operator dashboard (reads/writes the shared meshbbs.db;
+# never touches the serial radio). Plain HTTP bound to the Tailscale IP.
+#
+# Enable with:  meshbbswebui_enable="YES"
+# Optional overrides (defaults shown):
+#   meshbbswebui_user="steve"
+#   meshbbswebui_chdir="/home/steve/projects/meshbbs"
+#   meshbbswebui_db="meshbbs.db"
+#   meshbbswebui_host="100.118.159.79"   # Tailscale IP
+#   meshbbswebui_port="8080"
+#   meshbbswebui_logfile="/var/log/meshbbswebui.log"
+
+. /etc/rc.subr
+
+name="meshbbswebui"
+rcvar="meshbbswebui_enable"
+
+load_rc_config $name
+
+: ${meshbbswebui_enable:="NO"}
+: ${meshbbswebui_user:="steve"}
+: ${meshbbswebui_chdir:="/home/steve/projects/meshbbs"}
+: ${meshbbswebui_db:="meshbbs.db"}
+: ${meshbbswebui_host:="100.118.159.79"}
+: ${meshbbswebui_port:="8080"}
+: ${meshbbswebui_logfile:="/var/log/meshbbswebui.log"}
+
+pidfile="${meshbbswebui_chdir}/${name}.pid"
+procname="/usr/sbin/daemon"
+procname_child="${meshbbswebui_chdir}/meshbbs-webui"
+
+command="/usr/sbin/daemon"
+command_args="-r -R 5 -P ${pidfile} -o ${meshbbswebui_logfile} -m 3 -t ${name} \
+    ${procname_child} ${meshbbswebui_db} ${meshbbswebui_host} ${meshbbswebui_port}"
+
+start_precmd="meshbbswebui_precmd"
+
+meshbbswebui_precmd()
+{
+    if [ ! -x "${procname_child}" ]; then
+        err 1 "meshbbs-webui binary not found or not executable: ${procname_child}"
+    fi
+    if [ ! -e "${meshbbswebui_logfile}" ]; then
+        install -o "${meshbbswebui_user}" -g "${meshbbswebui_user}" -m 0644 \
+            /dev/null "${meshbbswebui_logfile}"
+    fi
+}
+
+run_rc_command "$1"

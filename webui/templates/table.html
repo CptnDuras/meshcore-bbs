@@ -1,0 +1,17 @@
+@include 'header.html'
+<h2>@{title}</h2>
+<table>
+	<tr>
+		@for hh in table.headers
+			<th>@{hh}</th>
+		@end
+	</tr>
+	@for r in table.rows
+		<tr>
+			@for c in r.cells
+				<td>@{c}</td>
+			@end
+		</tr>
+	@end
+</table>
+@include 'footer.html'

@@ -1,0 +1,46 @@
+@include 'header.html'
+<h2>Users &amp; roles</h2>
+<table>
+	<tr><th>Handle</th><th>Level</th><th>Banned</th><th>Last seen</th><th>Set role</th><th></th></tr>
+	@for u in users
+		<tr>
+			<td>@{u.handle}</td>
+			<td>@{u.level}</td>
+			<td>
+				@if u.banned
+					<span class="pill off">banned</span>
+				@else
+					<span class="pill on">active</span>
+				@end
+			</td>
+			<td>@{u.last_seen}</td>
+			<td class="actions">
+				<form method="post" action="/users/setperm" style="display:inline">
+					<input type="hidden" name="handle" value="@{u.handle}">
+					<select name="perm">
+						<option value="0">unverified</option>
+						<option value="1">twit</option>
+						<option value="2">user</option>
+						<option value="3">aide</option>
+						<option value="4">sysop</option>
+					</select>
+					<button type="submit">Set</button>
+				</form>
+			</td>
+			<td class="actions">
+				<form method="post" action="/users/ban" style="display:inline">
+					<input type="hidden" name="handle" value="@{u.handle}">
+					@if u.banned
+						<input type="hidden" name="banned" value="0">
+						<button class="ghost" type="submit">Unban</button>
+					@else
+						<input type="hidden" name="banned" value="1">
+						<button class="danger" type="submit">Ban</button>
+					@end
+				</form>
+			</td>
+		</tr>
+	@end
+</table>
+<p><small>Role changes take effect on the user's next BBS interaction (the daemon reads permissions per turn — no restart needed).</small></p>
+@include 'footer.html'

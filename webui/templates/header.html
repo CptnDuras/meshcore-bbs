@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>meshbbs admin</title>
+	<style>
+		:root{
+			--bg:#0f172a; --panel:#1e293b; --panel2:#243449; --border:#334155;
+			--text:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; --accent2:#818cf8;
+			--good:#34d399; --bad:#f87171; --radius:10px;
+		}
+		*{box-sizing:border-box}
+		body{
+			margin:0; background:var(--bg); color:var(--text);
+			font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+			line-height:1.5;
+		}
+		header.top{
+			display:flex; align-items:center; gap:.75rem;
+			padding:1rem 1.5rem; background:linear-gradient(90deg,#0b1220,#1e293b);
+			border-bottom:1px solid var(--border); position:sticky; top:0; z-index:10;
+		}
+		header.top .logo{font-weight:700; font-size:1.15rem; letter-spacing:.5px}
+		header.top .logo .dot{color:var(--accent)}
+		header.top .badge{
+			margin-left:auto; font-size:.75rem; color:var(--muted);
+			border:1px solid var(--border); border-radius:999px; padding:.15rem .6rem;
+		}
+		nav{
+			display:flex; flex-wrap:wrap; gap:.25rem; padding:.5rem 1rem;
+			background:var(--panel); border-bottom:1px solid var(--border);
+			position:sticky; top:57px; z-index:9;
+		}
+		nav a{
+			color:var(--muted); text-decoration:none; padding:.45rem .8rem;
+			border-radius:8px; font-size:.9rem; font-weight:500;
+		}
+		nav a:hover{background:var(--panel2); color:var(--text)}
+		main{padding:1.5rem; max-width:1100px; margin:0 auto}
+		h2{margin:.2rem 0 1rem; font-size:1.35rem}
+		h3,legend{color:var(--text)}
+		a{color:var(--accent)}
+		.muted,small{color:var(--muted)}
+
+		/* stat cards */
+		.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:1rem}
+		.card{
+			background:var(--panel); border:1px solid var(--border);
+			border-radius:var(--radius); padding:1.1rem 1.2rem;
+		}
+		.card .num{font-size:2rem; font-weight:700; color:#fff}
+		.card .lbl{color:var(--muted); font-size:.85rem; margin-top:.15rem}
+
+		/* tables */
+		table{
+			width:100%; border-collapse:separate; border-spacing:0;
+			background:var(--panel); border:1px solid var(--border);
+			border-radius:var(--radius); overflow:hidden; margin-top:.5rem;
+		}
+		th,td{padding:.6rem .8rem; text-align:left; font-size:.9rem; border-bottom:1px solid var(--border)}
+		th{background:var(--panel2); color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.03em; font-size:.72rem}
+		tr:last-child td{border-bottom:none}
+		tbody tr:hover td, table tr:hover td{background:rgba(56,189,248,.05)}
+		.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.82rem; color:var(--accent2)}
+
+		/* forms + buttons */
+		button{
+			background:var(--accent); color:#04263a; border:none; border-radius:8px;
+			padding:.4rem .8rem; font-weight:600; font-size:.85rem; cursor:pointer;
+		}
+		button:hover{filter:brightness(1.08)}
+		button.ghost{background:var(--panel2); color:var(--text); border:1px solid var(--border)}
+		button.danger{background:transparent; color:var(--bad); border:1px solid var(--bad)}
+		input,select{
+			background:var(--bg); color:var(--text); border:1px solid var(--border);
+			border-radius:8px; padding:.4rem .55rem; font-size:.9rem;
+		}
+		input:focus,select:focus{outline:none; border-color:var(--accent)}
+		label{display:inline-block; margin:.25rem .6rem .25rem 0; color:var(--muted); font-size:.9rem}
+		fieldset{
+			margin-top:1.5rem; border:1px solid var(--border); border-radius:var(--radius);
+			padding:1rem 1.2rem; background:var(--panel);
+		}
+		legend{padding:0 .5rem; font-weight:600}
+		.pill{font-size:.75rem; padding:.12rem .55rem; border-radius:999px; font-weight:600}
+		.pill.on{background:rgba(52,211,153,.15); color:var(--good)}
+		.pill.off{background:rgba(248,113,113,.12); color:var(--bad)}
+		.actions form{display:inline}
+		.actions button{margin-right:.25rem}
+	</style>
+</head>
+<body>
+	<header class="top">
+		<span class="logo">mesh<span class="dot">•</span>bbs <span style="color:var(--muted);font-weight:400">admin</span></span>
+		<span class="badge">MESHBBS · tailnet</span>
+	</header>
+	<nav>
+		<a href="/">Dashboard</a>
+		<a href="/nodes">Nodes</a>
+		<a href="/users">Users</a>
+		<a href="/interactions">Interactions</a>
+		<a href="/messages">Messages</a>
+		<a href="/macros">Macros</a>
+		<a href="/traffic">Traffic</a>
+		<a href="/schedules">Schedules</a>
+		<a href="/broadcast">Broadcast</a>
+	</nav>
+	<main>

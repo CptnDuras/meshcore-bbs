@@ -1,0 +1,30 @@
+# --- Python venv (large, machine-specific) ---
+venv/
+__pycache__/
+*.pyc
+
+# --- V build artifacts / compiled binaries ---
+meshbbs
+meshbbs-webui
+*.so
+*.o
+
+# --- runtime / operational state (do not commit) ---
+meshbbs.db
+*.db
+*.db-wal
+*.db-shm
+*.pid
+*.log
+
+# --- editor / OS noise ---
+*.swp
+*~
+.DS_Store
+
+# --- chat / assistant session artifacts (belt-and-suspenders; not normally here) ---
+*.chat
+*chat-history*
+*transcript*
+.kiro/
+.aws-kiro/

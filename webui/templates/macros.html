@@ -1,0 +1,51 @@
+@include 'header.html'
+<h2>Custom commands &amp; preferences</h2>
+
+<h3>User macros (text commands)</h3>
+@if macros.rows.len == 0
+	<p class="muted"><em>No custom commands defined yet. Users create them in the BBS with /CONFIG ADDCMD.</em></p>
+@else
+<table>
+	<tr>
+		@for hh in macros.headers
+			<th>@{hh}</th>
+		@end
+		<th>Actions</th>
+	</tr>
+	@for r in macros.rows
+		<tr>
+			@for c in r.cells
+				<td>@{c}</td>
+			@end
+			<td class="actions">
+				<form method="post" action="/macros/delete" style="display:inline">
+					<input type="hidden" name="owner" value="@{r.cells[0]}">
+					<input type="hidden" name="name" value="@{r.cells[1]}">
+					<button class="danger" type="submit">Delete</button>
+				</form>
+			</td>
+		</tr>
+	@end
+</table>
+@end
+
+<h3>User preferences</h3>
+@if prefs.rows.len == 0
+	<p class="muted"><em>No preferences set. Users set them in the BBS with /CONFIG SET.</em></p>
+@else
+<table>
+	<tr>
+		@for hh in prefs.headers
+			<th>@{hh}</th>
+		@end
+	</tr>
+	@for r in prefs.rows
+		<tr>
+			@for c in r.cells
+				<td>@{c}</td>
+			@end
+		</tr>
+	@end
+</table>
+@end
+@include 'footer.html'

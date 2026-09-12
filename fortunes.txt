@@ -1,0 +1,17 @@
+# meshbbs fortunes — one per line. Lines starting with # are ignored.
+# Keep each short; mesh packets are tiny (~160 bytes).
+The mesh provides.
+A packet in the hand is worth two in the repeater.
+You will make contact with a distant node today.
+Low SNR now; clear skies ahead.
+Reply hazy, try boosting your antenna.
+Off-grid, but never off-community.
+73 and good DX.
+The best time to deploy a node was 20 years ago. The second best time is now.
+When in doubt, add another repeater.
+Your next QSO will be a memorable one.
+Patience: the packet will arrive when the mesh wills it.
+A quiet channel is a healthy channel.
+Great antennas are built, not bought.
+The signal you seek is seeking you.
+Somewhere, a node is listening just for you.

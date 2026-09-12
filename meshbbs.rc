@@ -1,0 +1,80 @@
+#!/bin/sh
+#
+# PROVIDE: meshbbs
+# REQUIRE: LOGIN FILESYSTEMS
+# KEYWORD: shutdown
+#
+# meshbbs - MeshCore BBS daemon
+#
+# On every (re)start, the service resets the USB radio (CP210x bridge) via
+# meshbbs-run.sh before launching the daemon, so a wedged radio self-heals.
+# That reset uses `sudo usbconfig`, which requires this sudoers rule:
+#   steve ALL=(root) NOPASSWD: /usr/sbin/usbconfig
+# (installed at /usr/local/etc/sudoers.d/meshbbs)
+#
+# Add the following to /etc/rc.conf to enable:
+#   meshbbs_enable="YES"
+#
+# Optional overrides (defaults shown):
+#   meshbbs_user="steve"                       # rc.subr runs the daemon as this user
+#   meshbbs_chdir="/home/steve/projects/meshbbs"
+#   meshbbs_port="/dev/cuaU0"
+#   meshbbs_db="sqlite:meshbbs.db"
+#   meshbbs_logfile="/var/log/meshbbs.log"
+
+. /etc/rc.subr
+
+name="meshbbs"
+rcvar="meshbbs_enable"
+
+load_rc_config $name
+
+: ${meshbbs_enable:="NO"}
+# NOTE: meshbbs_user and meshbbs_chdir are consumed directly by rc.subr,
+# which drops privileges to that user and chdir's before starting the
+# command. Do NOT also pass "daemon -u" or it double-switches the user
+# and fails with "failed to set user environment".
+: ${meshbbs_user:="steve"}
+: ${meshbbs_chdir:="/home/steve/projects/meshbbs"}
+: ${meshbbs_port:="/dev/cuaU0"}
+: ${meshbbs_db:="sqlite:meshbbs.db"}
+: ${meshbbs_logfile:="/var/log/meshbbs.log"}
+
+# pidfile lives under the project dir, which the service user owns.
+# The pidfile holds the daemon(8) supervisor pid, so procname must point
+# at daemon(8) for rc.subr's status check to match.
+pidfile="${meshbbs_chdir}/${name}.pid"
+procname="/usr/sbin/daemon"
+
+# Actual application launcher that daemon(8) supervises. This wrapper resets
+# the USB radio on every (re)start, then execs the meshbbs binary, so a wedged
+# radio self-heals on restart.
+procname_child="${meshbbs_chdir}/meshbbs-run.sh"
+
+# daemon(8) supervises the child (already running as meshbbs_user via rc.subr):
+#   -r          restart the child if it exits
+#   -R 5        wait 5s between restarts so the serial radio can settle
+#               (back-to-back reopens race the appstart/SELF_INFO handshake)
+#   -P pidfile  supervisor pid, used by rc for stop/status
+#   -o logfile  append child stdout+stderr to the log
+#   -m 3        capture both stdout and stderr
+#   -t name     supervisor process title
+command="/usr/sbin/daemon"
+command_args="-r -R 5 -P ${pidfile} -o ${meshbbs_logfile} -m 3 -t ${name} \
+    ${procname_child} ${meshbbs_port} ${meshbbs_db}"
+
+start_precmd="meshbbs_precmd"
+
+meshbbs_precmd()
+{
+    if [ ! -x "${procname_child}" ]; then
+        err 1 "meshbbs binary not found or not executable: ${procname_child}"
+    fi
+    # Create the logfile owned by the service user if it does not exist.
+    if [ ! -e "${meshbbs_logfile}" ]; then
+        install -o "${meshbbs_user}" -g "${meshbbs_user}" -m 0644 \
+            /dev/null "${meshbbs_logfile}"
+    fi
+}
+
+run_rc_command "$1"

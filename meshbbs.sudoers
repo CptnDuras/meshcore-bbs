@@ -1,0 +1,3 @@
+# Allow the meshbbs service (running as steve) to reset the USB radio.
+# Scoped to usbconfig only; no other privileges are granted.
+steve ALL=(root) NOPASSWD: /usr/sbin/usbconfig

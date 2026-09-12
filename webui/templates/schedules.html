@@ -1,0 +1,79 @@
+@include 'header.html'
+<h2>Scheduled messages</h2>
+@if scheds.len == 0
+	<p><em>No scheduled messages yet. Use the form below to add one.</em></p>
+@else
+<table>
+	<tr><th>ID</th><th>Target</th><th>Source</th><th>Text</th><th>Kind</th><th>When</th><th>Enabled</th><th>Actions</th></tr>
+	@for s in scheds
+		<tr>
+			<td>@{s.id}</td>
+			<td class="mono">@{s.target}</td>
+			<td>@{s.source}</td>
+			<td>@{s.text}</td>
+			<td>@{s.kind}</td>
+			<td>@{s.whenv}</td>
+			<td>
+				@if s.enabled
+					<span class="pill on">enabled</span>
+				@else
+					<span class="pill off">disabled</span>
+				@end
+			</td>
+			<td class="actions">
+				<form method="post" action="/schedules/toggle" style="display:inline">
+					<input type="hidden" name="id" value="@{s.id}">
+					@if s.enabled
+						<input type="hidden" name="enabled" value="0">
+						<button class="ghost" type="submit">Disable</button>
+					@else
+						<input type="hidden" name="enabled" value="1">
+						<button type="submit">Enable</button>
+					@end
+				</form>
+				<form method="post" action="/schedules/delete" style="display:inline">
+					<input type="hidden" name="id" value="@{s.id}">
+					<button class="danger" type="submit">Delete</button>
+				</form>
+			</td>
+		</tr>
+	@end
+</table>
+@end
+
+<fieldset>
+	<legend>Add schedule</legend>
+	<form method="post" action="/schedules/add">
+		<label>Target kind
+			<select name="target_kind">
+				<option value="chan">channel</option>
+				<option value="dm">node (DM)</option>
+			</select>
+		</label>
+		<label>Target <input name="target" placeholder="0 or pubkey prefix"></label><br>
+		<label>Content source
+			<select name="source">
+				<option value="static">static text</option>
+				<option value="digest">live: weather+space+news digest</option>
+				<option value="wx">live: weather</option>
+				<option value="forecast">live: 3-day forecast</option>
+				<option value="spacewx">live: space weather</option>
+				<option value="news">live: local news</option>
+				<option value="fortune">live: fortune</option>
+			</select>
+		</label><br>
+		<label>Text (for static source) <input name="text" size="40"></label><br>
+		<label>Schedule
+			<select name="sched_kind">
+				<option value="daily">daily</option>
+				<option value="interval">interval</option>
+				<option value="onetime">one-time</option>
+			</select>
+		</label>
+		<label>daily HH:MM <input name="daily_hhmm" placeholder="07:00" size="6"></label>
+		<label>interval secs <input name="interval_secs" size="6"></label>
+		<label>one-time epoch <input name="run_at" size="12"></label><br>
+		<button type="submit">Add</button>
+	</form>
+</fieldset>
+@include 'footer.html'

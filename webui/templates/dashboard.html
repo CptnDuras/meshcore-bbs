@@ -1,0 +1,12 @@
+@include 'header.html'
+<h2>Dashboard</h2>
+<div class="grid">
+	@for s in stats
+		<a class="card" href="@{s.link}" style="text-decoration:none;color:inherit;display:block">
+			<div class="num">@{s.value}</div>
+			<div class="lbl">@{s.label}</div>
+		</a>
+	@end
+</div>
+<p class="muted"><small>Tap a card to see the underlying records.</small></p>
+@include 'footer.html'

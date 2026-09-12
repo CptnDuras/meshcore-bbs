@@ -1,0 +1,15 @@
+@include 'header.html'
+<h2>Send a message now</h2>
+<p>Enqueues into the outbound queue; the BBS daemon transmits it on its next loop tick.</p>
+<form method="post" action="/broadcast/send">
+	<label>Target kind
+		<select name="target_kind">
+			<option value="chan">channel</option>
+			<option value="dm">node (DM)</option>
+		</select>
+	</label>
+	<label>Target <input name="target" placeholder="0 or pubkey prefix"></label><br>
+	<label>Text <input name="text" size="50"></label>
+	<button type="submit">Send</button>
+</form>
+@include 'footer.html'
