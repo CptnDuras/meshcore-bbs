@@ -88,8 +88,15 @@ fn test_mail_notice_on_login() {
 fn test_mail_unknown_recipient() {
 	mut e := wf_engine()
 	e.handle('aa', 'NEW sysop pw')
+	// Mail-anyone: mailing a never-before-seen handle auto-creates a mailbox
+	// and prompts for the body (no longer rejected as 'No such user').
 	r := e.handle('aa', 'MAIL ghost')
-	assert r.contains('No such user')
+	assert r.contains('Enter mail to ghost')
+	if _ := e.store.get_user('ghost') {
+		// mailbox auto-created
+	} else {
+		assert false, 'ghost mailbox should have been auto-created'
+	}
 }
 
 fn test_empty_entry_discarded() {

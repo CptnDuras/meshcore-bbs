@@ -41,6 +41,13 @@ mut:
 	unread_mail_count(handle string) int
 	list_mail(handle string, limit int) []Mail
 	mark_mail_read(handle string) !
+	// ensure_mailbox makes a minimal user record so mail can be stored for a
+	// handle that has never logged in (empty pass_hash, perm=user). No-op if the
+	// handle already exists.
+	ensure_mailbox(handle string) !
+	// conversation returns all mail between two handles in BOTH directions,
+	// time-ordered oldest->newest (re-readable; does not touch unread state).
+	conversation(handle_a string, handle_b string, limit int) []Mail
 	// community features
 	add_oneliner(author string, text string) !
 	list_oneliners(limit int) []Oneliner
@@ -107,6 +114,9 @@ mut:
 	set_pref(owner string, key string, val string) !
 	get_pref(owner string, key string) ?string
 	list_prefs(owner string) []UserPref
+	// proactive mail-notice guard
+	get_mail_notice(handle string) ?MailNotice
+	record_mail_notice(handle string, count int, now i64) !
 }
 
 // new_store selects a backend from a config string.
@@ -156,6 +166,7 @@ pub fn (mut s SqliteStore) migrate() ! {
 		create table SentHeadline
 		create table UserMacro
 		create table UserPref
+		create table MailNotice
 	}!
 	// Lightweight column migrations for tables that predate a new field.
 	// V's ORM `create table` is CREATE TABLE IF NOT EXISTS and never adds new
@@ -453,6 +464,37 @@ pub fn (mut s SqliteStore) mark_mail_read(handle string) ! {
 	sql s.db {
 		update Mail set is_read = true where to_handle == handle
 	}!
+}
+
+// ensure_mailbox creates a minimal user record for `handle` if one does not
+// already exist, so mail can be stored for a recipient that has never logged
+// in. The record has an empty pass_hash (unclaimed) and perm=user. No-op when
+// the handle already exists (never downgrades an existing account).
+pub fn (mut s SqliteStore) ensure_mailbox(handle string) ! {
+	if _ := s.get_user(handle) {
+		return
+	}
+	u := User{
+		handle:    handle
+		pass_hash: '' // unclaimed: no password until the owner sets one
+		perm:      int(Perm.user)
+		created:   time.now().unix()
+		last_seen: time.now().unix()
+	}
+	sql s.db {
+		insert u into User
+	}!
+}
+
+// conversation returns all mail exchanged between handle_a and handle_b in
+// BOTH directions, ordered oldest->newest by id (a monotonic proxy for time).
+// It does NOT modify unread state, so the thread stays re-readable.
+pub fn (mut s SqliteStore) conversation(handle_a string, handle_b string, limit int) []Mail {
+	rows := sql s.db {
+		select from Mail where (to_handle == handle_a && from_handle == handle_b)
+			|| (to_handle == handle_b && from_handle == handle_a) order by id limit limit
+	} or { []Mail{} }
+	return rows
 }
 
 pub fn (mut s SqliteStore) add_oneliner(author string, text string) ! {
@@ -1025,4 +1067,37 @@ pub fn (mut s SqliteStore) list_prefs(owner string) []UserPref {
 	return sql s.db {
 		select from UserPref where owner == owner order by key
 	} or { []UserPref{} }
+}
+
+// --- proactive mail-notice guard ---
+
+pub fn (mut s SqliteStore) get_mail_notice(handle string) ?MailNotice {
+	rows := sql s.db {
+		select from MailNotice where handle == handle limit 1
+	} or { return none }
+	if rows.len == 0 {
+		return none
+	}
+	return rows[0]
+}
+
+pub fn (mut s SqliteStore) record_mail_notice(handle string, count int, now i64) ! {
+	existing := sql s.db {
+		select from MailNotice where handle == handle limit 1
+	} or { []MailNotice{} }
+	if existing.len == 0 {
+		row := MailNotice{
+			handle:        handle
+			last_notified: now
+			last_count:    count
+		}
+		sql s.db {
+			insert row into MailNotice
+		}!
+	} else {
+		id := existing[0].id
+		sql s.db {
+			update MailNotice set last_notified = now, last_count = count where id == id
+		}!
+	}
 }

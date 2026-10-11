@@ -50,22 +50,25 @@ fn test_burst_within_cap_no_more() {
 	assert more == false
 }
 
-fn test_burst_exceeds_cap_adds_continue() {
+fn test_burst_sends_all_pages_no_continue() {
 	pages := ['a', 'b', 'c', 'd', 'e']
 	msgs, next, more := burst(pages, 0)
-	// burst_cap messages + 1 continue marker
-	assert more == true
-	assert next == burst_cap
-	assert msgs.last().contains('more')
+	// every page is sent in one turn; no cap, no continue marker
+	assert msgs.len == pages.len
+	assert next == pages.len
+	assert more == false
+	for m in msgs {
+		assert !m.contains('more')
+	}
 }
 
-fn test_burst_second_page() {
+fn test_burst_respects_offset() {
 	pages := ['a', 'b', 'c', 'd', 'e']
-	_, next, _ := burst(pages, 0)
-	msgs2, next2, more2 := burst(pages, next)
-	assert msgs2.len > 0
-	assert next2 == pages.len
-	assert more2 == false
+	msgs, next, more := burst(pages, 2)
+	assert msgs.len == 3
+	assert msgs[0] == 'c'
+	assert next == pages.len
+	assert more == false
 }
 
 // --- wx.v pure parsers coverage ---

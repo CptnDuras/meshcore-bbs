@@ -208,6 +208,19 @@ pub mut:
 	val   string
 }
 
+// MailNotice guards proactive "you have mail" notices so we don't spam a node
+// each time it advertises. Tracks when we last notified a handle and the unread
+// count at that time (so a notice re-fires when new mail arrives or a cooldown
+// elapses).
+@[table: 'mail_notices']
+pub struct MailNotice {
+pub mut:
+	id            int    @[primary; sql: serial]
+	handle        string @[unique]
+	last_notified i64
+	last_count    int
+}
+
 // SentHeadline records a news headline already broadcast, so news aging can
 // skip it next time (each send surfaces fresh items).
 @[table: 'sent_headlines']

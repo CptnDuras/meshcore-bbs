@@ -116,6 +116,21 @@ fn main() {
 			engine.save_node_name(prefix, ev.payload.adv_name, int(ev.payload.contact_type),
 				i64(ev.payload.last_advert))
 		}
+		// Proactive store-and-forward: if this node's account has unread mail,
+		// enqueue a rate-limited, notice-only DM (the daemon loop drains it).
+		// Resolve the node's current handle from its session (handles the case
+		// where the user CLAIMed a real handle); fall back to the auto handle.
+		mut handle := 'node-${prefix}'
+		if sess := engine.store.load_session(prefix) {
+			if sess.handle.len > 0 {
+				handle = sess.handle
+			}
+		}
+		notice := engine.maybe_mail_notice(handle, time.now().unix())
+		if notice.len > 0 {
+			engine.store.enqueue_outbound(target_dm, prefix, notice) or {}
+			println('[mail-notice] queued for ${prefix} (${handle})')
+		}
 	}
 	mc.subscribe(.advertisement, advert_cb)
 
@@ -168,6 +183,13 @@ fn main() {
 	mut last_contact_sync := time.now().unix()
 	contact_sync_interval := i64(15 * 60) // 15 minutes
 
+	// Periodic self-advert with flood routing so the whole mesh keeps a fresh
+	// route to MESHBBS (not just direct neighbours). The startup advert above is
+	// zero-hop; this one floods every 30 min. Sent by THIS process because the
+	// serial port is single-owner.
+	advert_interval := i64(30 * 60) // 30 minutes
+	mut last_advert := time.now().unix() // startup advert already sent above
+
 	// --- all scheduling is DB-backed (scheduled_messages) ---
 	// Seed the standing daily broadcasts as DB rows if they don't already exist,
 	// so they are visible/editable in the web UI. Idempotent: keyed by
@@ -187,6 +209,13 @@ fn main() {
 		if now - last_contact_sync >= contact_sync_interval {
 			contact_refresh()
 			last_contact_sync = now
+		}
+
+		// Periodic flood advert every 30 min so the mesh keeps a fresh route.
+		if now - last_advert >= advert_interval {
+			mc.send_advert(true) or { eprintln('periodic flood advert failed: ${err}') }
+			last_advert = now
+			println('[advert] periodic flood advert sent')
 		}
 
 		// Evaluate DB-backed scheduled messages: enqueue any that are due,

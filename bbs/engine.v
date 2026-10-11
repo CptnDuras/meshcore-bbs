@@ -229,8 +229,14 @@ fn (mut e Engine) dispatch(mut sess Session, line string) string {
 		'MAIL' {
 			return e.start_mail(mut sess, args)
 		}
+		'THREAD' {
+			return e.thread_view(mut sess, args)
+		}
 		'MAILBOX', 'INBOX' {
 			return e.read_mail(mut sess)
+		}
+		'CHECKMAIL', '/CHECKMAIL', 'CM' {
+			return e.check_mail(mut sess)
 		}
 		'ONELINER', 'O' {
 			return e.oneliner(mut sess, args)
@@ -312,7 +318,7 @@ fn (mut e Engine) handle_unknown(mut sess Session, cmd string, args string) stri
 // known_commands is the set used for "did you mean" suggestions.
 const known_commands = ['HELP', 'MENU', 'WHO', 'WX', 'FORECAST', 'SPACEWX', 'NEWS', 'LIST',
 	'READ', 'POST', 'NEW', 'CLAIM', 'SETPASS', 'LOGIN', 'LOGOUT', 'KNOWN', 'CHANGE', 'GOTO',
-	'ENTER', 'MAIL', 'MAILBOX', 'ONELINER', 'BULLETIN', 'POLL', 'VOTE', 'RESULTS', 'PROFILE',
+	'ENTER', 'MAIL', 'MAILBOX', 'CHECKMAIL', 'THREAD', 'ONELINER', 'BULLETIN', 'POLL', 'VOTE', 'RESULTS', 'PROFILE',
 	'SETBIO', 'CHANNELS', 'CHANADD', 'STATS', 'FORTUNE', 'ROLL', '8BALL', 'JOKE', 'CONFIG',
 	'TELL', 'CALLERS']
 
@@ -418,7 +424,7 @@ fn (mut e Engine) help(sess Session) string {
 	b += 'FORTUNE  ROLL <NdM>  8BALL <q>  JOKE\n'
 	b += 'CHANNELS (directory)\n'
 	b += 'STATS\n'
-	b += 'E [subj] enter msg  MAIL <u>  MAILBOX  TELL <u> <msg>  SETBIO <text>\n'
+	b += 'E [subj] enter msg  MAIL <u>  MAILBOX  CHECKMAIL  THREAD <u>  TELL <u> <msg>  SETBIO <text>\n'
 	b += 'POLL NEW <q>|<opt>|<opt>...  POLLCLOSE <id>  CHANADD <name>|<desc>|<info>\n'
 	b += 'Account: CLAIM <handle> <pass>  SETPASS <pass>  LOGIN <handle> <pass>  Q logout\n'
 	b += '/CONFIG — preferences + your own custom commands\n'

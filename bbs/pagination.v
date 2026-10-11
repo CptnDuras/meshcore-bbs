@@ -1,12 +1,12 @@
 module main
 
 // Pagination splits long BBS output into mesh-sized messages.
-// MeshCore text messages cap at 160 bytes; we stay under that and also cap how
-// many messages we emit in one burst (good mesh citizenship) — the rest waits
-// behind a [C]ontinue prompt.
+// MeshCore text messages cap at 160 bytes; we stay under that. All pages of a
+// reply are sent in one turn (the daemon spaces them out for airtime); there is
+// no interactive continue prompt — it collided with the C (CHANGE room) command
+// and the continue state was never wired through anyway.
 
 pub const msg_max = 150 // leave headroom under the 160-byte limit
-pub const burst_cap = 3 // max messages sent per turn before [C]ontinue
 
 // paginate splits `text` into <=msg_max byte chunks, breaking on newlines/space
 // where possible.
@@ -38,18 +38,13 @@ pub fn paginate(text string) []string {
 	return out
 }
 
-// burst returns the messages to send this turn (up to burst_cap starting at
-// offset) and the new offset; more_remaining indicates a [C]ontinue is needed.
+// burst returns the messages to send this turn. All pages are sent (no cap, no
+// continue prompt). The extra return values are kept for call-site
+// compatibility: next is always pages.len and more is always false.
 pub fn burst(pages []string, offset int) ([]string, int, bool) {
 	mut msgs := []string{}
-	mut i := offset
-	for i < pages.len && msgs.len < burst_cap {
+	for i in offset .. pages.len {
 		msgs << pages[i]
-		i++
 	}
-	more := i < pages.len
-	if more {
-		msgs << '--- more: send C to continue ---'
-	}
-	return msgs, i, more
+	return msgs, pages.len, false
 }
