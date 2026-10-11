@@ -117,6 +117,18 @@ mut:
 	// proactive mail-notice guard
 	get_mail_notice(handle string) ?MailNotice
 	record_mail_notice(handle string, count int, now i64) !
+	// optional MQTT observer: settings, brokers, publisher telemetry
+	mqtt_get(key string) ?string
+	mqtt_set(key string, val string) !
+	mqtt_rev() int
+	add_mqtt_broker(b MqttBroker) !MqttBroker
+	get_mqtt_broker(id int) ?MqttBroker
+	list_mqtt_brokers() []MqttBroker
+	update_mqtt_broker(b MqttBroker) !
+	set_mqtt_broker_enabled(id int, enabled bool) !
+	delete_mqtt_broker(id int) !
+	set_mqtt_status(broker_id int, state string, last_error string, published i64) !
+	list_mqtt_status() []MqttStatus
 }
 
 // new_store selects a backend from a config string.
@@ -167,6 +179,9 @@ pub fn (mut s SqliteStore) migrate() ! {
 		create table UserMacro
 		create table UserPref
 		create table MailNotice
+		create table MqttSetting
+		create table MqttBroker
+		create table MqttStatus
 	}!
 	// Lightweight column migrations for tables that predate a new field.
 	// V's ORM `create table` is CREATE TABLE IF NOT EXISTS and never adds new
@@ -1100,4 +1115,153 @@ pub fn (mut s SqliteStore) record_mail_notice(handle string, count int, now i64)
 			update MailNotice set last_notified = now, last_count = count where id == id
 		}!
 	}
+}
+
+// --- MQTT observer settings / brokers / status ---
+
+pub fn (mut s SqliteStore) mqtt_get(key string) ?string {
+	rows := sql s.db {
+		select from MqttSetting where key == key limit 1
+	} or { return none }
+	if rows.len == 0 {
+		return none
+	}
+	return rows[0].val
+}
+
+// mqtt_put upserts a setting without touching the revision counter.
+fn (mut s SqliteStore) mqtt_put(key string, val string) ! {
+	existing := sql s.db {
+		select from MqttSetting where key == key limit 1
+	} or { []MqttSetting{} }
+	if existing.len == 0 {
+		row := MqttSetting{
+			key: key
+			val: val
+		}
+		sql s.db {
+			insert row into MqttSetting
+		}!
+	} else {
+		id := existing[0].id
+		sql s.db {
+			update MqttSetting set val = val where id == id
+		}!
+	}
+}
+
+// bump_mqtt_rev marks the configuration as changed so the daemon reloads it.
+fn (mut s SqliteStore) bump_mqtt_rev() ! {
+	s.mqtt_put('rev', (s.mqtt_rev() + 1).str())!
+}
+
+pub fn (mut s SqliteStore) mqtt_rev() int {
+	v := s.mqtt_get('rev') or { return 0 }
+	return v.int()
+}
+
+pub fn (mut s SqliteStore) mqtt_set(key string, val string) ! {
+	s.mqtt_put(key, val)!
+	s.bump_mqtt_rev()!
+}
+
+pub fn (mut s SqliteStore) add_mqtt_broker(b MqttBroker) !MqttBroker {
+	mut row := b
+	row.created = time.now().unix()
+	sql s.db {
+		insert row into MqttBroker
+	}!
+	rows := sql s.db {
+		select from MqttBroker order by id desc limit 1
+	} or { []MqttBroker{} }
+	if rows.len == 0 {
+		return error('added broker not found')
+	}
+	s.bump_mqtt_rev()!
+	return rows[0]
+}
+
+pub fn (mut s SqliteStore) get_mqtt_broker(id int) ?MqttBroker {
+	rows := sql s.db {
+		select from MqttBroker where id == id limit 1
+	} or { return none }
+	if rows.len == 0 {
+		return none
+	}
+	return rows[0]
+}
+
+pub fn (mut s SqliteStore) list_mqtt_brokers() []MqttBroker {
+	return sql s.db {
+		select from MqttBroker order by id
+	} or { []MqttBroker{} }
+}
+
+pub fn (mut s SqliteStore) update_mqtt_broker(b MqttBroker) ! {
+	id := b.id
+	name := b.name
+	enabled := b.enabled
+	host := b.host
+	port := b.port
+	transport := b.transport
+	path := b.path
+	auth := b.auth
+	username := b.username
+	password := b.password
+	audience := b.audience
+	sql s.db {
+		update MqttBroker set name = name, enabled = enabled, host = host, port = port,
+		transport = transport, path = path, auth = auth, username = username,
+		password = password, audience = audience where id == id
+	}!
+	s.bump_mqtt_rev()!
+}
+
+pub fn (mut s SqliteStore) set_mqtt_broker_enabled(id int, enabled bool) ! {
+	sql s.db {
+		update MqttBroker set enabled = enabled where id == id
+	}!
+	s.bump_mqtt_rev()!
+}
+
+pub fn (mut s SqliteStore) delete_mqtt_broker(id int) ! {
+	sql s.db {
+		delete from MqttBroker where id == id
+	}!
+	sql s.db {
+		delete from MqttStatus where broker_id == id
+	}!
+	s.bump_mqtt_rev()!
+}
+
+// set_mqtt_status upserts per-broker telemetry. Not config: no rev bump.
+pub fn (mut s SqliteStore) set_mqtt_status(broker_id int, state string, last_error string, published i64) ! {
+	now := time.now().unix()
+	existing := sql s.db {
+		select from MqttStatus where broker_id == broker_id limit 1
+	} or { []MqttStatus{} }
+	if existing.len == 0 {
+		row := MqttStatus{
+			broker_id:  broker_id
+			state:      state
+			last_error: last_error
+			published:  published
+			updated:    now
+		}
+		sql s.db {
+			insert row into MqttStatus
+		}!
+	} else {
+		id := existing[0].id
+		sql s.db {
+			update MqttStatus set state = state, last_error = last_error, published = published,
+			updated = now where id == id
+		}!
+	}
+}
+
+pub fn (mut s SqliteStore) list_mqtt_status() []MqttStatus {
+	return sql s.db {
+		select from MqttStatus order by broker_id
+	} or { []MqttStatus{} }
 }

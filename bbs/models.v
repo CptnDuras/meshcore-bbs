@@ -288,3 +288,48 @@ pub mut:
 	enabled       bool
 	created       i64
 }
+
+// --- MQTT observer (optional; OFF by default) ---
+// All configuration lives in the shared DB so the web UI process can edit it
+// and the daemon can hot-reload it. The node's private key is NEVER stored.
+
+// MqttSetting is a key/value row. Keys: enabled ('1'/'0'), iata, rev.
+@[table: 'mqtt_settings']
+pub struct MqttSetting {
+pub mut:
+	id  int    @[primary; sql: serial]
+	key string @[unique]
+	val string
+}
+
+// MqttBroker is one upstream broker the observer publishes to.
+//   transport: tcp | ws | wss
+//   auth:      none | password | token (JWT signed with the node's key)
+@[table: 'mqtt_brokers']
+pub struct MqttBroker {
+pub mut:
+	id        int    @[primary; sql: serial]
+	name      string
+	enabled   bool
+	host      string
+	port      int
+	transport string = 'tcp'
+	path      string // websocket path, e.g. /mqtt
+	auth      string = 'none'
+	username  string
+	password  string
+	audience  string // JWT audience for token auth
+	created   i64
+}
+
+// MqttStatus is telemetry written by the publisher: one row per broker.
+@[table: 'mqtt_status']
+pub struct MqttStatus {
+pub mut:
+	id         int    @[primary; sql: serial]
+	broker_id  int    @[unique]
+	state      string // connecting | connected | error | stopped
+	last_error string
+	published  i64
+	updated    i64
+}
