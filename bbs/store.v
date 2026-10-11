@@ -121,6 +121,7 @@ mut:
 	mqtt_get(key string) ?string
 	mqtt_set(key string, val string) !
 	mqtt_rev() int
+	mqtt_note(key string, val string) !
 	add_mqtt_broker(b MqttBroker) !MqttBroker
 	get_mqtt_broker(id int) ?MqttBroker
 	list_mqtt_brokers() []MqttBroker
@@ -1158,6 +1159,12 @@ fn (mut s SqliteStore) bump_mqtt_rev() ! {
 pub fn (mut s SqliteStore) mqtt_rev() int {
 	v := s.mqtt_get('rev') or { return 0 }
 	return v.int()
+}
+
+// mqtt_note records runtime telemetry (e.g. daemon state) WITHOUT bumping the
+// revision - it is not configuration, so it must not trigger a reload.
+pub fn (mut s SqliteStore) mqtt_note(key string, val string) ! {
+	s.mqtt_put(key, val)!
 }
 
 pub fn (mut s SqliteStore) mqtt_set(key string, val string) ! {

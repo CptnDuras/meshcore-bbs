@@ -142,8 +142,8 @@ pub fn mqtt_validate_broker(b MqttBroker) string {
 	if b.port < 1 || b.port > 65535 {
 		return 'port must be 1-65535'
 	}
-	if b.transport !in ['tcp', 'ws', 'wss'] {
-		return 'transport must be tcp, ws or wss'
+	if b.transport !in ['tcp', 'tls', 'ws', 'wss'] {
+		return 'transport must be tcp, tls, ws or wss'
 	}
 	if b.auth !in ['none', 'password', 'token'] {
 		return 'auth must be none, password or token'

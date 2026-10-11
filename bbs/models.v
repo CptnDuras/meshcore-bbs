@@ -303,7 +303,7 @@ pub mut:
 }
 
 // MqttBroker is one upstream broker the observer publishes to.
-//   transport: tcp | ws | wss
+//   transport: tcp | tls (MQTT over TLS) | ws | wss
 //   auth:      none | password | token (JWT signed with the node's key)
 @[table: 'mqtt_brokers']
 pub struct MqttBroker {
