@@ -200,3 +200,9 @@ fn test_template_helpers() {
 	assert pw_hint(true) == '(unchanged)'
 	assert pw_hint(false) == ''
 }
+
+fn test_h_escapes_html() {
+	assert h('<script>alert(1)</script>') == '&lt;script&gt;alert(1)&lt;/script&gt;'
+	assert h('a"b\'c&d') == 'a&quot;b&#39;c&amp;d'
+	assert h('plain') == 'plain'
+}

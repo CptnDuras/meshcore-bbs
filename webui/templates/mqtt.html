@@ -4,10 +4,10 @@
 (MeshMapper, Waev, LetsMesh) or a local broker. Optional and <strong>off by default</strong>.</p>
 
 @if err.len > 0
-	<p style="color:var(--bad)"><strong>@{err}</strong></p>
+	<p style="color:var(--bad)"><strong>@{h(err)}</strong></p>
 @end
 @if msg.len > 0
-	<p style="color:var(--good)">@{msg}</p>
+	<p style="color:var(--good)">@{h(msg)}</p>
 @end
 
 @if !page.available
@@ -20,12 +20,12 @@
 		<label>
 			<input type="checkbox" name="enabled" value="1" @{checked_attr(page.enabled)}> Enable MQTT observer
 		</label>
-		<label>IATA code <input name="iata" value="@{page.iata}" size="5" maxlength="3" placeholder="BYG"></label>
+		<label>IATA code <input name="iata" value="@{h(page.iata)}" size="5" maxlength="3" placeholder="BYG"></label>
 		<button type="submit">Save</button>
 	</form>
-	<p>Daemon: <strong>@{page.state}</strong>
+	<p>Daemon: <strong>@{h(page.state)}</strong>
 	@if page.key.len > 0
-		&nbsp;·&nbsp; Signing key: <strong>@{page.key}</strong>
+		&nbsp;·&nbsp; Signing key: <strong>@{h(page.key)}</strong>
 	@end
 	</p>
 	<small>The IATA code (nearest airport, 3 letters) selects your region on the map services.
@@ -41,9 +41,9 @@
 	<tr><th>Name</th><th>Endpoint</th><th>Auth</th><th>Status</th><th>Published</th><th>Actions</th></tr>
 	@for b in page.brokers
 		<tr>
-			<td>@{b.name}</td>
-			<td class="mono">@{b.transport}://@{b.host}:@{b.port}</td>
-			<td>@{b.auth}</td>
+			<td>@{h(b.name)}</td>
+			<td class="mono">@{h(b.transport)}://@{h(b.host)}:@{b.port}</td>
+			<td>@{h(b.auth)}</td>
 			<td>
 				@if !b.enabled
 					<span class="pill off">disabled</span>
@@ -52,10 +52,10 @@
 				@else if b.state == 'error'
 					<span class="pill off">error</span>
 				@else
-					<span class="pill">@{b.state}</span>
+					<span class="pill">@{h(b.state)}</span>
 				@end
 				@if b.last_error.len > 0
-					<br><small style="color:var(--bad)">@{b.last_error}</small>
+					<br><small style="color:var(--bad)">@{h(b.last_error)}</small>
 				@end
 			</td>
 			<td>@{b.published}</td>
@@ -79,11 +79,11 @@
 		<tr>
 			<td colspan="6">
 				<details>
-					<summary class="muted">Edit @{b.name}</summary>
+					<summary class="muted">Edit @{h(b.name)}</summary>
 					<form method="post" action="/mqtt/broker/update">
 						<input type="hidden" name="id" value="@{b.id}">
-						<label>Name <input name="name" value="@{b.name}"></label>
-						<label>Host <input name="host" value="@{b.host}"></label>
+						<label>Name <input name="name" value="@{h(b.name)}"></label>
+						<label>Host <input name="host" value="@{h(b.host)}"></label>
 						<label>Port <input name="port" value="@{b.port}" size="6"></label>
 						<label>Transport
 							<select name="transport">
@@ -93,7 +93,7 @@
 								<option value="wss" @{sel_attr(b.transport, 'wss')}>wss</option>
 							</select>
 						</label>
-						<label>WS path <input name="path" value="@{b.path}" size="8"></label><br>
+						<label>WS path <input name="path" value="@{h(b.path)}" size="8"></label><br>
 						<label>Auth
 							<select name="auth">
 								<option value="none" @{sel_attr(b.auth, 'none')}>none</option>
@@ -101,9 +101,9 @@
 								<option value="token" @{sel_attr(b.auth, 'token')}>token (signed by node key)</option>
 							</select>
 						</label>
-						<label>Username <input name="username" value="@{b.username}"></label>
+						<label>Username <input name="username" value="@{h(b.username)}"></label>
 						<label>Password <input type="password" name="password" placeholder="@{pw_hint(b.has_password)}" autocomplete="new-password"></label>
-						<label>Token audience <input name="audience" value="@{b.audience}"></label>
+						<label>Token audience <input name="audience" value="@{h(b.audience)}"></label>
 						<button type="submit">Save changes</button>
 					</form>
 				</details>
@@ -119,7 +119,7 @@
 		<label>Preset
 			<select name="preset">
 				@for p in page.presets
-					<option value="@{p}">@{p}</option>
+					<option value="@{h(p)}">@{h(p)}</option>
 				@end
 			</select>
 		</label>

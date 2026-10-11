@@ -186,3 +186,10 @@ fn sel_attr(cur string, val string) string {
 fn pw_hint(has bool) string {
 	return if has { '(unchanged)' } else { '' }
 }
+
+// h HTML-escapes a value for use in element text or a quoted attribute.
+// veb's @{} does NOT escape, so every user-controlled value goes through this.
+fn h(s string) string {
+	return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'",
+		'&#39;')
+}
