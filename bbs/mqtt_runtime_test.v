@@ -10,6 +10,7 @@ mut:
 	up      bool = true
 	stopped bool
 	full    bool
+	status  []string // lines the "publisher" has reported on stdout
 }
 
 fn (mut f FakePipe) alive() bool {
@@ -22,6 +23,13 @@ fn (mut f FakePipe) write_line(s string) bool {
 	}
 	f.lines << s
 	return true
+}
+
+fn (mut f FakePipe) read_status() ?string {
+	if f.status.len == 0 {
+		return none
+	}
+	return f.status.pop_left()
 }
 
 fn (mut f FakePipe) stop() {
@@ -332,4 +340,42 @@ fn test_key_failure_retries_later_and_publisher_still_starts() {
 	// config re-sent now that the key is known
 	last := json.decode(MqttCfgCmd, h.pipes[0].lines.last()) or { panic(err) }
 	assert last.key == 'ab'.repeat(64)
+}
+
+fn test_status_lines_from_publisher_are_stored() {
+	mut store := enabled_store()
+	mut h := new_harness(mut store)
+	h.rt.tick(1000, mut store)
+	h.pipes[0].status << '{"t":"status","id":7,"state":"connected","error":"","published":5,"ts":1}'
+	h.pipes[0].status << '{"t":"status","id":8,"state":"error","error":"boom","published":0,"ts":2}'
+	h.rt.tick(1001, mut store)
+	st := store.list_mqtt_status()
+	assert st.len == 2
+	assert st[0].broker_id == 7 && st[0].state == 'connected' && st[0].published == 5
+	assert st[1].broker_id == 8 && st[1].last_error == 'boom'
+	h.pipes[0].status << '{"t":"delete","id":7}'
+	h.rt.tick(1002, mut store)
+	assert store.list_mqtt_status().len == 1
+}
+
+fn test_malformed_status_lines_are_ignored() {
+	mut store := enabled_store()
+	mut h := new_harness(mut store)
+	h.rt.tick(1000, mut store)
+	h.pipes[0].status << 'not json'
+	h.pipes[0].status << '{"t":"weird"}'
+	h.pipes[0].status << '{"t":"status","id":0,"state":"x","error":"","published":0,"ts":0}'
+	h.rt.tick(1001, mut store)
+	assert store.list_mqtt_status().len == 0
+}
+
+fn test_status_does_not_bump_config_revision() {
+	mut store := enabled_store()
+	mut h := new_harness(mut store)
+	h.rt.tick(1000, mut store)
+	rev := store.mqtt_rev()
+	h.pipes[0].status << '{"t":"status","id":1,"state":"connected","error":"","published":1,"ts":1}'
+	h.rt.tick(1001, mut store)
+	assert store.mqtt_rev() == rev
+	assert h.pipes[0].lines.len == 1 // no spurious config resend
 }

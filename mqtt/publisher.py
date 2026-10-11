@@ -10,12 +10,12 @@ on stdin and publishes to the configured brokers:
   {"cmd":"stop"}                                  -> offline status, exit
 
 The private key arrives over the pipe and lives only in this process's memory.
-Per-broker connection state is written to the shared DB (table mqtt_status)
-for the web UI. Usage: publisher.py <path-to-meshbbs.db>
+Per-broker connection state is reported back on stdout as JSON lines
+({"t":"status",...} / {"t":"delete",...}); the daemon stores it for the web UI.
+Logs go to stderr. Usage: publisher.py
 """
 import json
 import queue
-import sqlite3
 import sys
 import threading
 import time
@@ -33,35 +33,28 @@ def log(msg):
 
 
 class StatusSink:
-    """Writes per-broker telemetry into the shared SQLite DB."""
+    """Reports per-broker telemetry to the daemon as JSON lines on stdout.
 
-    def __init__(self, path):
-        self.path = path
+    The daemon owns the database and applies these; the publisher needs no DB
+    access (and no sqlite3 module, which FreeBSD ships as a separate package).
+    """
 
-    def _exec(self, fn):
+    def __init__(self, stream=None):
+        self.stream = stream if stream is not None else sys.stdout
+
+    def _emit(self, obj):
         try:
-            conn = sqlite3.connect(self.path, timeout=5)
-            try:
-                fn(conn)
-                conn.commit()
-            finally:
-                conn.close()
-        except sqlite3.Error as e:
+            self.stream.write(json.dumps(obj, separators=(",", ":")) + "\n")
+            self.stream.flush()
+        except (OSError, ValueError) as e:
             log(f"status write failed: {e}")
 
     def set(self, broker_id, state, error, published, now):
-        def go(conn):
-            cur = conn.execute(
-                "UPDATE mqtt_status SET state=?, last_error=?, published=?, updated=? WHERE broker_id=?",
-                (state, error, published, now, broker_id))
-            if cur.rowcount == 0:
-                conn.execute(
-                    "INSERT INTO mqtt_status (broker_id, state, last_error, published, updated)"
-                    " VALUES (?,?,?,?,?)", (broker_id, state, error, published, now))
-        self._exec(go)
+        self._emit({"t": "status", "id": broker_id, "state": state, "error": error,
+                    "published": published, "ts": now})
 
     def delete(self, broker_id):
-        self._exec(lambda conn: conn.execute("DELETE FROM mqtt_status WHERE broker_id=?", (broker_id,)))
+        self._emit({"t": "delete", "id": broker_id})
 
 
 class Conn:
@@ -286,10 +279,7 @@ def make_paho_client(client_id, transport):
 
 
 def main(argv):
-    if len(argv) != 2:
-        print("usage: publisher.py <meshbbs.db>", file=sys.stderr)
-        return 2
-    pub = Publisher(make_paho_client, StatusSink(argv[1]))
+    pub = Publisher(make_paho_client, StatusSink())
     q = queue.Queue()
 
     def reader():

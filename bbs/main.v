@@ -57,18 +57,12 @@ fn main() {
 		mqtt_ident.fw = di.payload.fw_version
 	}
 	home := mqtt_home()
-	db_file := os.real_path(if db_cfg.starts_with('sqlite:') {
-		db_cfg['sqlite:'.len..]
-	} else {
-		db_cfg
-	})
 	mut mqtt := &MqttRuntime{
 		ident:      mqtt_ident
-		factory:    fn [home, db_file] () !MqttPipe {
+		factory:    fn [home] () !MqttPipe {
 			return new_process_pipe(os.getenv_opt('MESHBBS_MQTT_PYTHON') or {
 				os.join_path(home, 'venv', 'bin', 'python')
-			}, os.join_path(home, 'mqtt', 'publisher.py'), db_file, os.join_path(home,
-				'meshbbs-mqtt.log'))
+			}, os.join_path(home, 'mqtt', 'publisher.py'), os.join_path(home, 'meshbbs-mqtt.log'))
 		}
 		key_loader: fn [mut mc] () !string {
 			return mc.export_private_key()!.hex()

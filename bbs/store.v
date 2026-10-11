@@ -130,6 +130,7 @@ mut:
 	delete_mqtt_broker(id int) !
 	set_mqtt_status(broker_id int, state string, last_error string, published i64) !
 	list_mqtt_status() []MqttStatus
+	delete_mqtt_status(broker_id int) !
 }
 
 // new_store selects a backend from a config string.
@@ -1271,4 +1272,10 @@ pub fn (mut s SqliteStore) list_mqtt_status() []MqttStatus {
 	return sql s.db {
 		select from MqttStatus order by broker_id
 	} or { []MqttStatus{} }
+}
+
+pub fn (mut s SqliteStore) delete_mqtt_status(broker_id int) ! {
+	sql s.db {
+		delete from MqttStatus where broker_id == broker_id
+	}!
 }

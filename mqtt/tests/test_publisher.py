@@ -1,5 +1,5 @@
+import io
 import json
-import sqlite3
 
 import ed25519_orlp as ed
 import pytest
@@ -74,15 +74,22 @@ class FakeClient:
         self.on_disconnect(self, None, None, 0, None)
 
 
+class ListSink:
+    """Captures status events like the real stdout sink would emit them."""
+
+    def __init__(self):
+        self.events = []
+
+    def set(self, broker_id, state, error, published, now):
+        self.events.append(("set", broker_id, state, error, published))
+
+    def delete(self, broker_id):
+        self.events.append(("delete", broker_id))
+
+
 @pytest.fixture
-def env(tmp_path):
-    db = tmp_path / "t.db"
-    conn = sqlite3.connect(db)
-    conn.execute(
-        "CREATE TABLE mqtt_status (id INTEGER PRIMARY KEY AUTOINCREMENT, broker_id INTEGER UNIQUE,"
-        " state TEXT, last_error TEXT, published INTEGER, updated INTEGER)")
-    conn.commit()
-    conn.close()
+def env():
+    sink = ListSink()
     clients = []
 
     def factory(client_id, transport):
@@ -91,8 +98,8 @@ def env(tmp_path):
         return c
 
     clock = {"t": 1_760_000_000}
-    p = Publisher(factory, StatusSink(str(db)), now=lambda: clock["t"])
-    return p, clients, db, clock
+    p = Publisher(factory, sink, now=lambda: clock["t"])
+    return p, clients, sink, clock
 
 
 def cfg(brokers, key=PRVHEX, iata="BYG"):
@@ -107,11 +114,15 @@ TCP = {"id": 2, "name": "local", "host": "127.0.0.1", "port": 1883, "transport":
        "path": "", "auth": "none", "audience": "", "username": "", "password": ""}
 
 
-def rows(db):
-    c = sqlite3.connect(db)
-    r = c.execute("SELECT broker_id, state, last_error, published FROM mqtt_status ORDER BY broker_id").fetchall()
-    c.close()
-    return r
+def rows(sink):
+    """Latest (broker_id, state, error, published) per broker, like the DB table."""
+    cur = {}
+    for ev in sink.events:
+        if ev[0] == "set":
+            cur[ev[1]] = (ev[1], ev[2], ev[3], ev[4])
+        else:
+            cur.pop(ev[1], None)
+    return [cur[k] for k in sorted(cur)]
 
 
 def test_wss_token_broker_setup(env):
@@ -271,3 +282,14 @@ def test_main_loop_parses_lines(env):
     lines = [json.dumps(cfg([TCP])), "not json", json.dumps({"cmd": "stop"})]
     pub_mod.run_lines(p, iter(lines))
     assert clients[0].disconnected
+
+
+def test_stdout_sink_emits_json_lines():
+    buf = io.StringIO()
+    s = pub_mod.StatusSink(buf)
+    s.set(3, "connected", "", 12, 1760000000)
+    s.delete(3)
+    lines = [json.loads(x) for x in buf.getvalue().splitlines()]
+    assert lines[0] == {"t": "status", "id": 3, "state": "connected", "error": "",
+                        "published": 12, "ts": 1760000000}
+    assert lines[1] == {"t": "delete", "id": 3}

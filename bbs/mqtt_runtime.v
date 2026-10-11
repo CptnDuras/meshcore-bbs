@@ -21,6 +21,7 @@ pub interface MqttPipe {
 mut:
 	alive() bool
 	write_line(s string) bool // non-blocking; false = dropped
+	read_status() ?string // next status line the publisher reported, if any
 	stop()
 }
 
@@ -111,6 +112,29 @@ fn mqtt_config_line(cfg MqttConfig, ident MqttIdentity, key string) string {
 		key:       if mqtt_needs_key(cfg) { key } else { '' }
 		brokers:   brokers
 	})
+}
+
+// MqttStatusMsg is one line the publisher prints on stdout.
+struct MqttStatusMsg {
+	t         string
+	id        int
+	state     string
+	err_msg   string @[json: 'error']
+	published i64
+}
+
+// apply_status applies one publisher status line to the store. Telemetry only:
+// it never touches the configuration revision. Malformed lines are ignored.
+fn apply_status(mut store Store, line string) {
+	m := json.decode(MqttStatusMsg, line) or { return }
+	if m.id <= 0 {
+		return
+	}
+	match m.t {
+		'status' { store.set_mqtt_status(m.id, m.state, m.err_msg, m.published) or {} }
+		'delete' { store.delete_mqtt_status(m.id) or {} }
+		else {}
+	}
 }
 
 fn (mut r MqttRuntime) note(mut store Store, state string) {
@@ -207,6 +231,10 @@ pub fn (mut r MqttRuntime) tick(now i64, mut store Store) {
 			r.sent_rev = rev
 		}
 	}
+	for _ in 0 .. 200 { // bounded: never let a chatty publisher stall the loop
+		line := r.pipes[0].read_status() or { break }
+		apply_status(mut store, line)
+	}
 	r.note(mut store, 'running: ${cfg.brokers.len} broker(s)')
 }
 
@@ -235,16 +263,20 @@ pub fn (mut r MqttRuntime) on_packet(ts i64, snr f64, rssi f64, raw []u8) {
 pub struct ProcessPipe {
 mut:
 	proc &os.Process = unsafe { nil }
-	ch   chan string
+	ch   chan string // lines to the publisher's stdin
+	sch  chan string // status lines from the publisher's stdout
+mut:
+	done bool // set once the publisher is gone; tells the helper threads to exit
 }
 
 fn sh_quote(s string) string {
 	return "'" + s.replace("'", "'\\''") + "'"
 }
 
-// new_process_pipe starts mqtt/publisher.py. Its stdout/stderr go to a log
-// file (never to unread pipes, which would eventually block it).
-pub fn new_process_pipe(python string, script string, db_path string, log_path string) !MqttPipe {
+// new_process_pipe starts mqtt/publisher.py. stdin carries commands in, stdout
+// carries status lines out (drained by a reader thread), and stderr goes to a
+// log file so an unread pipe can never block the publisher.
+pub fn new_process_pipe(python string, script string, log_path string) !MqttPipe {
 	if !os.exists(python) {
 		return error('python not found at ${python}')
 	}
@@ -254,8 +286,8 @@ pub fn new_process_pipe(python string, script string, db_path string, log_path s
 	// SIGPIPE must not kill the daemon if the publisher dies mid-write.
 	os.signal_ignore(.pipe)
 	mut p := os.new_process('/bin/sh')
-	p.set_args(['-c', 'exec ' + sh_quote(python) + ' ' + sh_quote(script) + ' ' + sh_quote(db_path) +
-		' >>' + sh_quote(log_path) + ' 2>&1'])
+	p.set_args(['-c', 'exec ' + sh_quote(python) + ' ' + sh_quote(script) + ' 2>>' +
+		sh_quote(log_path)])
 	p.set_redirect_stdio()
 	p.run()
 	if p.status != .running {
@@ -264,23 +296,85 @@ pub fn new_process_pipe(python string, script string, db_path string, log_path s
 	mut pp := &ProcessPipe{
 		proc: p
 		ch:   chan string{cap: 512}
+		sch:  chan string{cap: 256}
 	}
 	spawn pipe_writer(mut pp)
+	spawn pipe_status_reader(mut pp)
 	return pp
 }
 
 fn pipe_writer(mut pp ProcessPipe) {
 	for {
 		line := <-pp.ch or { break }
-		if !pp.proc.is_alive() {
+		if pp.done {
 			break
 		}
 		pp.proc.stdin_write(line + '\n')
 	}
 }
 
+// pipe_status_reader splits the publisher's stdout into lines. If the queue is
+// full the oldest-unread line wins (new ones are dropped): status is advisory.
+fn pipe_status_reader(mut pp ProcessPipe) {
+	mut buf := ''
+	for {
+		// stdout_read is NON-blocking: '' just means "nothing right now".
+		// Only the owner (alive()/stop()) calls waitpid; this thread exits via
+		// the `done` flag, after one last drain once the publisher is gone.
+		chunk := pp.proc.stdout_read()
+		if chunk.len == 0 {
+			if pp.done {
+				break
+			}
+			time.sleep(100 * time.millisecond)
+			continue
+		}
+		buf += chunk
+		for {
+			i := buf.index_u8(`\n`)
+			if i < 0 {
+				break
+			}
+			line := buf[..i].trim_space()
+			buf = buf[i + 1..]
+			if line.len > 0 {
+				select {
+					pp.sch <- line {}
+					else {}
+				}
+			}
+		}
+		if buf.len > 65536 { // runaway line without a newline
+			buf = ''
+		}
+	}
+	pp.sch.close()
+}
+
+pub fn (mut pp ProcessPipe) read_status() ?string {
+	select {
+		line := <-pp.sch {
+			if line.len == 0 { // channel closed (publisher exited)
+				return none
+			}
+			return line
+		}
+		else {
+			return none
+		}
+	}
+	return none
+}
+
 pub fn (mut pp ProcessPipe) alive() bool {
-	return pp.proc.is_alive()
+	if pp.done {
+		return false
+	}
+	if !pp.proc.is_alive() {
+		pp.done = true
+		return false
+	}
+	return true
 }
 
 pub fn (mut pp ProcessPipe) write_line(s string) bool {
@@ -309,6 +403,8 @@ pub fn (mut pp ProcessPipe) stop() {
 		pp.proc.signal_kill()
 	}
 	pp.proc.wait()
+	pp.done = true
+	time.sleep(250 * time.millisecond) // let the reader take its last drain and exit
 	pp.proc.close()
 }
 
