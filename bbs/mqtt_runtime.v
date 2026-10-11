@@ -3,6 +3,7 @@ module main
 import json
 import os
 import sync
+import time
 
 // Daemon side of the optional MQTT observer. Owns the lifecycle of the Python
 // publisher process (mqtt/publisher.py): starts it only while MQTT is enabled
@@ -302,11 +303,17 @@ pub fn (mut pp ProcessPipe) stop() {
 		if !pp.proc.is_alive() {
 			break
 		}
-		os.sleep_ms(100)
+		time.sleep(100 * time.millisecond)
 	}
 	if pp.proc.is_alive() {
 		pp.proc.signal_kill()
 	}
 	pp.proc.wait()
 	pp.proc.close()
+}
+
+// mqtt_home is the directory holding mqtt/publisher.py and the venv: the
+// MESHBBS_HOME env var, else the directory containing the meshbbs binary.
+pub fn mqtt_home() string {
+	return os.getenv_opt('MESHBBS_HOME') or { os.dir(os.executable()) }
 }

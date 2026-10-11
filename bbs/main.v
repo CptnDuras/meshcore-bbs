@@ -46,6 +46,39 @@ fn main() {
 	}
 	println('BBS live as ${si.payload.name} @ ${si.payload.radio_freq} MHz. Waiting for callers...\n')
 
+	// --- optional MQTT observer (off unless enabled in the web UI) ---
+	// Identity comes from the radio; model/firmware are best-effort.
+	mut mqtt_ident := MqttIdentity{
+		origin:    si.payload.name
+		origin_id: si.payload.public_key.to_upper()
+	}
+	if di := mc.send_device_query() {
+		mqtt_ident.model = di.payload.model
+		mqtt_ident.fw = di.payload.fw_version
+	}
+	home := mqtt_home()
+	db_file := os.real_path(if db_cfg.starts_with('sqlite:') {
+		db_cfg['sqlite:'.len..]
+	} else {
+		db_cfg
+	})
+	mut mqtt := &MqttRuntime{
+		ident:      mqtt_ident
+		factory:    fn [home, db_file] () !MqttPipe {
+			return new_process_pipe(os.getenv_opt('MESHBBS_MQTT_PYTHON') or {
+				os.join_path(home, 'venv', 'bin', 'python')
+			}, os.join_path(home, 'mqtt', 'publisher.py'), db_file, os.join_path(home,
+				'meshbbs-mqtt.log'))
+		}
+		key_loader: fn [mut mc] () !string {
+			return mc.export_private_key()!.hex()
+		}
+	}
+	// Every packet the radio hears is forwarded (a no-op unless MQTT is running).
+	mc.subscribe(.log_rx_data, fn [mut mqtt] (ev meshcore.Event) {
+		mqtt.on_packet(time.now().unix(), ev.payload.snr, ev.payload.rssi, ev.payload.data)
+	})
+
 	// Set this node's advertised friendly name so neighbours see 'MESHBBS'
 	// (overridable via arg 4). Then advert once so the new name propagates.
 	node_name := if os.args.len > 4 { os.args[4] } else { 'MESHBBS' }
@@ -204,6 +237,9 @@ fn main() {
 
 	for {
 		now := time.now().unix()
+
+		// MQTT observer: reconcile the publisher with the web-UI configuration.
+		mqtt.tick(now, mut engine.store)
 
 		// Refresh the node-name map from the radio's contact list every 15 min.
 		if now - last_contact_sync >= contact_sync_interval {

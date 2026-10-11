@@ -2,6 +2,7 @@ module main
 
 import crypto.sha256
 import json
+import mqttcfg
 import time
 
 // Optional MQTT observer: reports the packets this node hears to MQTT brokers
@@ -31,11 +32,6 @@ pub fn load_mqtt_config(mut store Store) MqttConfig {
 	return cfg
 }
 
-// normalize_iata upper-cases and trims a location code. Validation (3 letters)
-// is mqtt_validate_iata's job; this never fails.
-pub fn normalize_iata(s string) string {
-	return s.trim_space().to_upper()
-}
 
 // --- packet parsing -------------------------------------------------------
 // MeshCore over-the-air layout (src/Packet.cpp):
@@ -98,105 +94,63 @@ pub fn parse_packet(raw []u8) ?PacketInfo {
 	}
 }
 
-// --- topics / validation --------------------------------------------------
+// --- topics / validation / presets: rules live in the shared mqttcfg module
+// (also used by the web UI); these wrappers adapt the ORM struct.
 
 pub fn observer_topic(iata string, pubkey string, kind string) string {
 	return 'meshcore/${normalize_iata(iata)}/${pubkey.to_upper()}/${kind}'
 }
 
-pub fn valid_iata(s string) bool {
-	t := s.trim_space()
-	if t.len != 3 {
-		return false
-	}
-	for c in t {
-		if !((c >= `A` && c <= `Z`) || (c >= `a` && c <= `z`)) {
-			return false
-		}
-	}
-	return true
+pub fn normalize_iata(s string) string {
+	return mqttcfg.normalize_iata(s)
 }
 
-fn valid_hostname(h string) bool {
-	if h.len == 0 || h.len > 253 {
-		return false
+pub fn valid_iata(s string) bool {
+	return mqttcfg.valid_iata(s)
+}
+
+fn broker_to_cfg(b MqttBroker) mqttcfg.Broker {
+	return mqttcfg.Broker{
+		name:      b.name
+		enabled:   b.enabled
+		host:      b.host
+		port:      b.port
+		transport: b.transport
+		path:      b.path
+		auth:      b.auth
+		username:  b.username
+		password:  b.password
+		audience:  b.audience
 	}
-	for c in h {
-		ok := (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
-			|| c == `.` || c == `-` || c == `_` || c == `:`
-		if !ok {
-			return false
-		}
+}
+
+fn broker_from_cfg(b mqttcfg.Broker) MqttBroker {
+	return MqttBroker{
+		name:      b.name
+		enabled:   b.enabled
+		host:      b.host
+		port:      b.port
+		transport: b.transport
+		path:      b.path
+		auth:      b.auth
+		username:  b.username
+		password:  b.password
+		audience:  b.audience
 	}
-	return true
 }
 
 // mqtt_validate_broker returns '' when the broker is usable, else the reason.
 pub fn mqtt_validate_broker(b MqttBroker) string {
-	if b.name.trim_space().len == 0 || b.name.len > 40 {
-		return 'name is required (max 40 chars)'
-	}
-	if !valid_hostname(b.host) {
-		return 'host is missing or has invalid characters'
-	}
-	if b.port < 1 || b.port > 65535 {
-		return 'port must be 1-65535'
-	}
-	if b.transport !in ['tcp', 'tls', 'ws', 'wss'] {
-		return 'transport must be tcp, tls, ws or wss'
-	}
-	if b.auth !in ['none', 'password', 'token'] {
-		return 'auth must be none, password or token'
-	}
-	if b.auth == 'password' && b.username.trim_space().len == 0 {
-		return 'username is required for password auth'
-	}
-	if b.auth == 'token' && b.audience.trim_space().len == 0 {
-		return 'audience is required for token auth'
-	}
-	return ''
-}
-
-// --- presets --------------------------------------------------------------
-// Values come from the meshcoretomqtt preset files. Token auth = JWT signed
-// with the node's own key, so these need a node that allows key export.
-
-fn token_wss(name string, host string) MqttBroker {
-	return MqttBroker{
-		name:      name
-		host:      host
-		port:      443
-		transport: 'wss'
-		path:      '/'
-		auth:      'token'
-		audience:  host
-		enabled:   true
-	}
+	return mqttcfg.validate(broker_to_cfg(b))
 }
 
 pub fn mqtt_preset_names() []string {
-	return ['meshmapper', 'waev-a', 'waev-b', 'letsmesh-us', 'letsmesh-eu', 'local']
+	return mqttcfg.preset_names()
 }
 
 pub fn mqtt_preset(name string) ?MqttBroker {
-	return match name {
-		'meshmapper' { token_wss('meshmapper', 'mqtt.meshmapper.net') }
-		'waev-a' { token_wss('waev-a', 'mqtt-a.waev.app') }
-		'waev-b' { token_wss('waev-b', 'mqtt-b.waev.app') }
-		'letsmesh-us' { token_wss('letsmesh-us', 'mqtt-us-v1.letsmesh.net') }
-		'letsmesh-eu' { token_wss('letsmesh-eu', 'mqtt-eu-v1.letsmesh.net') }
-		'local' {
-			MqttBroker{
-				name:      'local'
-				host:      '127.0.0.1'
-				port:      1883
-				transport: 'tcp'
-				auth:      'none'
-				enabled:   true
-			}
-		}
-		else { none }
-	}
+	b := mqttcfg.preset(name)?
+	return broker_from_cfg(b)
 }
 
 // --- payloads -------------------------------------------------------------
