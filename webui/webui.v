@@ -16,6 +16,7 @@ module main
 
 import veb
 import db.sqlite
+import net.urllib
 import os
 import time
 
@@ -156,6 +157,66 @@ pub fn (app &App) users(mut ctx Context) veb.Result {
 	defer { db.close() or {} }
 	users := load_users(mut db)
 	return $veb.html('templates/users.html')
+}
+
+
+// --- MQTT observer settings ---
+
+@['/mqtt']
+pub fn (app &App) mqtt(mut ctx Context) veb.Result {
+	mut db := app.db() or { return ctx.text('db error') }
+	defer { db.close() or {} }
+	page := mqtt_load(mut db)
+	msg := ctx.query['msg'] or { '' }
+	err := ctx.query['err'] or { '' }
+	return $veb.html('templates/mqtt.html')
+}
+
+fn mqtt_back(mut ctx Context, err string) veb.Result {
+	if err.len > 0 {
+		return ctx.redirect('/mqtt?err=' + urllib.query_escape(err), typ: .found)
+	}
+	return ctx.redirect('/mqtt?msg=' + urllib.query_escape('Saved. The daemon applies changes within a few seconds.'), typ: .found)
+}
+
+@['/mqtt/settings'; post]
+pub fn (app &App) mqtt_settings(mut ctx Context) veb.Result {
+	mut db := app.db() or { return ctx.redirect('/mqtt', typ: .found) }
+	defer { db.close() or {} }
+	enabled := (ctx.form['enabled'] or { '' }) == '1'
+	return mqtt_back(mut ctx, mqtt_save_settings(mut db, enabled, ctx.form['iata'] or { '' }))
+}
+
+@['/mqtt/broker/add'; post]
+pub fn (app &App) mqtt_broker_add(mut ctx Context) veb.Result {
+	mut db := app.db() or { return ctx.redirect('/mqtt', typ: .found) }
+	defer { db.close() or {} }
+	return mqtt_back(mut ctx, mqtt_add_broker(mut db, ctx.form.clone()))
+}
+
+@['/mqtt/broker/update'; post]
+pub fn (app &App) mqtt_broker_update(mut ctx Context) veb.Result {
+	mut db := app.db() or { return ctx.redirect('/mqtt', typ: .found) }
+	defer { db.close() or {} }
+	id := (ctx.form['id'] or { '0' }).int()
+	return mqtt_back(mut ctx, mqtt_update_broker(mut db, id, ctx.form.clone()))
+}
+
+@['/mqtt/broker/toggle'; post]
+pub fn (app &App) mqtt_broker_toggle(mut ctx Context) veb.Result {
+	mut db := app.db() or { return ctx.redirect('/mqtt', typ: .found) }
+	defer { db.close() or {} }
+	id := (ctx.form['id'] or { '0' }).int()
+	mqtt_toggle_broker(mut db, id, (ctx.form['enabled'] or { '' }) == '1')
+	return mqtt_back(mut ctx, '')
+}
+
+@['/mqtt/broker/delete'; post]
+pub fn (app &App) mqtt_broker_delete(mut ctx Context) veb.Result {
+	mut db := app.db() or { return ctx.redirect('/mqtt', typ: .found) }
+	defer { db.close() or {} }
+	mqtt_delete_broker(mut db, (ctx.form['id'] or { '0' }).int())
+	return mqtt_back(mut ctx, '')
 }
 
 // --- POST actions (PRG: redirect after write) ---

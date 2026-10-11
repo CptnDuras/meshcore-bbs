@@ -146,3 +146,11 @@ pub fn broker_from_form(f map[string]string) (Broker, string) {
 	err := validate(b)
 	return b, err
 }
+
+// Column lists of the MQTT tables the daemon creates (V ORM, from bbs/models.v).
+// The web UI reads/writes these tables with raw SQL; bbs/mqtt_store_test.v
+// asserts the real schema matches, so drift is caught by a test.
+pub const settings_columns = ['id', 'key', 'val']
+pub const broker_columns = ['id', 'name', 'enabled', 'host', 'port', 'transport', 'path', 'auth',
+	'username', 'password', 'audience', 'created']
+pub const status_columns = ['id', 'broker_id', 'state', 'last_error', 'published', 'updated']

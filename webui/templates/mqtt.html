@@ -1,0 +1,162 @@
+@include 'header.html'
+<h2>MQTT observer</h2>
+<p class="muted">Reports the packets this node hears to MQTT brokers so it appears on mesh maps
+(MeshMapper, Waev, LetsMesh) or a local broker. Optional and <strong>off by default</strong>.</p>
+
+@if err.len > 0
+	<p style="color:var(--bad)"><strong>@{err}</strong></p>
+@end
+@if msg.len > 0
+	<p style="color:var(--good)">@{msg}</p>
+@end
+
+@if !page.available
+	<p><em>The MQTT tables do not exist yet. Restart the meshbbs daemon once (it creates them on startup), then reload this page.</em></p>
+@else
+
+<fieldset>
+	<legend>Settings</legend>
+	<form method="post" action="/mqtt/settings">
+		<label>
+			<input type="checkbox" name="enabled" value="1" @{checked_attr(page.enabled)}> Enable MQTT observer
+		</label>
+		<label>IATA code <input name="iata" value="@{page.iata}" size="5" maxlength="3" placeholder="BYG"></label>
+		<button type="submit">Save</button>
+	</form>
+	<p>Daemon: <strong>@{page.state}</strong>
+	@if page.key.len > 0
+		&nbsp;·&nbsp; Signing key: <strong>@{page.key}</strong>
+	@end
+	</p>
+	<small>The IATA code (nearest airport, 3 letters) selects your region on the map services.
+	Token-auth brokers need the radio firmware to allow private-key export; the key is read from
+	the radio into memory and is never stored or shown.</small>
+</fieldset>
+
+<h3>Brokers</h3>
+@if page.brokers.len == 0
+	<p><em>No brokers yet. Add one below.</em></p>
+@else
+<table>
+	<tr><th>Name</th><th>Endpoint</th><th>Auth</th><th>Status</th><th>Published</th><th>Actions</th></tr>
+	@for b in page.brokers
+		<tr>
+			<td>@{b.name}</td>
+			<td class="mono">@{b.transport}://@{b.host}:@{b.port}</td>
+			<td>@{b.auth}</td>
+			<td>
+				@if !b.enabled
+					<span class="pill off">disabled</span>
+				@else if b.state == 'connected'
+					<span class="pill on">connected</span>
+				@else if b.state == 'error'
+					<span class="pill off">error</span>
+				@else
+					<span class="pill">@{b.state}</span>
+				@end
+				@if b.last_error.len > 0
+					<br><small style="color:var(--bad)">@{b.last_error}</small>
+				@end
+			</td>
+			<td>@{b.published}</td>
+			<td class="actions">
+				<form method="post" action="/mqtt/broker/toggle" style="display:inline">
+					<input type="hidden" name="id" value="@{b.id}">
+					@if b.enabled
+						<input type="hidden" name="enabled" value="0">
+						<button class="ghost" type="submit">Disable</button>
+					@else
+						<input type="hidden" name="enabled" value="1">
+						<button type="submit">Enable</button>
+					@end
+				</form>
+				<form method="post" action="/mqtt/broker/delete" style="display:inline">
+					<input type="hidden" name="id" value="@{b.id}">
+					<button class="danger" type="submit">Delete</button>
+				</form>
+			</td>
+		</tr>
+		<tr>
+			<td colspan="6">
+				<details>
+					<summary class="muted">Edit @{b.name}</summary>
+					<form method="post" action="/mqtt/broker/update">
+						<input type="hidden" name="id" value="@{b.id}">
+						<label>Name <input name="name" value="@{b.name}"></label>
+						<label>Host <input name="host" value="@{b.host}"></label>
+						<label>Port <input name="port" value="@{b.port}" size="6"></label>
+						<label>Transport
+							<select name="transport">
+								<option value="tcp" @{sel_attr(b.transport, 'tcp')}>tcp</option>
+								<option value="tls" @{sel_attr(b.transport, 'tls')}>tls</option>
+								<option value="ws" @{sel_attr(b.transport, 'ws')}>ws</option>
+								<option value="wss" @{sel_attr(b.transport, 'wss')}>wss</option>
+							</select>
+						</label>
+						<label>WS path <input name="path" value="@{b.path}" size="8"></label><br>
+						<label>Auth
+							<select name="auth">
+								<option value="none" @{sel_attr(b.auth, 'none')}>none</option>
+								<option value="password" @{sel_attr(b.auth, 'password')}>password</option>
+								<option value="token" @{sel_attr(b.auth, 'token')}>token (signed by node key)</option>
+							</select>
+						</label>
+						<label>Username <input name="username" value="@{b.username}"></label>
+						<label>Password <input type="password" name="password" placeholder="@{pw_hint(b.has_password)}" autocomplete="new-password"></label>
+						<label>Token audience <input name="audience" value="@{b.audience}"></label>
+						<button type="submit">Save changes</button>
+					</form>
+				</details>
+			</td>
+		</tr>
+	@end
+</table>
+@end
+
+<fieldset>
+	<legend>Add a public broker</legend>
+	<form method="post" action="/mqtt/broker/add">
+		<label>Preset
+			<select name="preset">
+				@for p in page.presets
+					<option value="@{p}">@{p}</option>
+				@end
+			</select>
+		</label>
+		<button type="submit">Add preset</button>
+	</form>
+</fieldset>
+
+<fieldset>
+	<legend>Add a custom broker</legend>
+	<form method="post" action="/mqtt/broker/add">
+		<input type="hidden" name="preset" value="">
+		<label>Name <input name="name" placeholder="my-broker"></label>
+		<label>Host <input name="host" placeholder="broker.example.org"></label>
+		<label>Port <input name="port" value="1883" size="6"></label>
+		<label>Transport
+			<select name="transport">
+				<option value="tcp">tcp</option>
+				<option value="tls">tls</option>
+				<option value="ws">ws</option>
+				<option value="wss">wss</option>
+			</select>
+		</label>
+		<label>WS path <input name="path" placeholder="/" size="8"></label><br>
+		<label>Auth
+			<select name="auth">
+				<option value="none">none</option>
+				<option value="password">password</option>
+				<option value="token">token (signed by node key)</option>
+			</select>
+		</label>
+		<label>Username <input name="username"></label>
+		<label>Password <input type="password" name="password" autocomplete="new-password"></label>
+		<label>Token audience <input name="audience" placeholder="broker.example.org"></label>
+		<button type="submit">Add broker</button>
+	</form>
+	<small>Broker passwords are stored in the database in plain text; this page is tailnet-only.</small>
+</fieldset>
+
+@end
+@include 'footer.html'

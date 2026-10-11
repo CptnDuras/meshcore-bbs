@@ -1,5 +1,8 @@
 module main
 
+import mqttcfg
+import os
+
 // MQTT observer settings live in the shared DB so the web UI (a separate
 // process) can edit them and the daemon can pick them up. Default is OFF.
 
@@ -89,4 +92,29 @@ fn test_load_mqtt_config_only_enabled_brokers() {
 	assert cfg.iata == 'BYG' // normalized to upper case
 	assert cfg.brokers.len == 1
 	assert cfg.brokers[0].name == 'a'
+}
+
+// The web UI talks to these tables with raw SQL using the column lists in
+// mqttcfg. If the ORM models change, this fails until both are updated.
+fn table_cols(path string, table string) []string {
+	// a throwaway on-disk db so we can inspect the real ORM-created schema
+	mut store := new_store('sqlite:${path}') or { panic(err) }
+	store.migrate() or { panic(err) }
+	mut s := store as SqliteStore
+	rows := s.db.exec('PRAGMA table_info(${table})') or { panic(err) }
+	mut cols := []string{}
+	for r in rows {
+		cols << r.vals[1]
+	}
+	return cols
+}
+
+fn test_orm_schema_matches_webui_contract() {
+	path := os.join_path(os.temp_dir(), 'mqtt_schema_${os.getpid()}.db')
+	defer {
+		os.rm(path) or {}
+	}
+	assert table_cols(path, 'mqtt_settings') == mqttcfg.settings_columns
+	assert table_cols(path, 'mqtt_brokers') == mqttcfg.broker_columns
+	assert table_cols(path, 'mqtt_status') == mqttcfg.status_columns
 }
