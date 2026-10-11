@@ -15,6 +15,10 @@ Status: **specs only — not yet built.**
 - [docs/04-transport-and-security.md](docs/04-transport-and-security.md) — why serial
 - [docs/05-hardware-notes.md](docs/05-hardware-notes.md) — 915 MHz antenna separation, radios
 - [docs/06-data-model.md](docs/06-data-model.md) — SQLite schema by phase
+- [docs/58-mqtt-observer.md](docs/58-mqtt-observer.md) — optional MQTT observer (map reporting)
+
+Build note: the daemon depends on the separate `meshcore-v` module (`git@github.com:CptnDuras/meshcore-v.git`),
+symlinked into `~/.vmodules/meshcore`. The MQTT observer needs its `mqtt-observer` branch.
 
 ## Toolchain
 
