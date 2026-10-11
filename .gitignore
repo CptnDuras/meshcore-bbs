@@ -28,3 +28,10 @@ meshbbs.db
 *transcript*
 .kiro/
 .aws-kiro/
+
+# --- extra build outputs / V compiler scratch ---
+meshbbs_asan
+meshbbs_new
+meshbbs.pre-gc
+meshbbs.gc
+.meshbbs.v3cc.*/
