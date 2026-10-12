@@ -1,6 +1,6 @@
 module main
 
-import json
+import json2
 
 // A fake publisher pipe so lifecycle logic is testable without a process.
 @[heap]
@@ -103,7 +103,7 @@ fn test_enabled_starts_once_and_sends_config_once() {
 	h.rt.tick(1002, mut store)
 	assert h.starts == 1
 	assert h.pipes[0].lines.len == 1
-	c := json.decode(MqttCfgCmd, h.pipes[0].lines[0]) or { panic(err) }
+	c := json2.decode[MqttCfgCmd](h.pipes[0].lines[0]) or { panic(err) }
 	assert c.cmd == 'config'
 	assert c.iata == 'BYG'
 	assert c.origin == 'MESHBBS'
@@ -121,7 +121,7 @@ fn test_config_change_resends() {
 	h.rt.tick(1001, mut store)
 	assert h.starts == 1
 	assert h.pipes[0].lines.len == 2
-	c := json.decode(MqttCfgCmd, h.pipes[0].lines[1]) or { panic(err) }
+	c := json2.decode[MqttCfgCmd](h.pipes[0].lines[1]) or { panic(err) }
 	assert c.iata == 'SHR'
 }
 
@@ -198,9 +198,9 @@ fn test_on_packet_publishes_when_running() {
 	raw := [u8(0x09), 0x02, 0xAA, 0xBB, 0x01, 0x02, 0x03, 0x04, 0x05]
 	h.rt.on_packet(1760000000, 5.5, -97.0, raw)
 	assert h.pipes[0].lines.len == 2
-	cmd := json.decode(map[string]string{}, h.pipes[0].lines[1]) or { panic(err) }
+	cmd := json2.decode[map[string]string](h.pipes[0].lines[1]) or { panic(err) }
 	assert cmd['cmd'] == 'packet'
-	inner := json.decode(map[string]string{}, cmd['payload']) or { panic(err) }
+	inner := json2.decode[map[string]string](cmd['payload']) or { panic(err) }
 	assert inner['hash'] == '23ADB40BCDA9A241'
 	assert inner['origin'] == 'MESHBBS'
 }
@@ -258,14 +258,14 @@ fn test_key_goes_in_config_line_only_when_needed() {
 	mut h := new_harness(mut store)
 	h.rt.key = 'cd'.repeat(64)
 	h.rt.tick(1000, mut store)
-	c := json.decode(MqttCfgCmd, h.pipes[0].lines[0]) or { panic(err) }
+	c := json2.decode[MqttCfgCmd](h.pipes[0].lines[0]) or { panic(err) }
 	assert c.key == 'cd'.repeat(64)
 	// no token brokers -> the key is not sent at all
 	mut store2 := enabled_store()
 	mut h2 := new_harness(mut store2)
 	h2.rt.key = 'cd'.repeat(64)
 	h2.rt.tick(1000, mut store2)
-	c2 := json.decode(MqttCfgCmd, h2.pipes[0].lines[0]) or { panic(err) }
+	c2 := json2.decode[MqttCfgCmd](h2.pipes[0].lines[0]) or { panic(err) }
 	assert c2.key == ''
 }
 
@@ -289,7 +289,7 @@ fn test_key_loaded_lazily_for_token_brokers() {
 	h.rt.tick(1000, mut store)
 	h.rt.tick(1001, mut store)
 	assert ctr.n == 1
-	c := json.decode(MqttCfgCmd, h.pipes[0].lines[0]) or { panic(err) }
+	c := json2.decode[MqttCfgCmd](h.pipes[0].lines[0]) or { panic(err) }
 	assert c.key == 'ef'.repeat(64)
 	assert (store.mqtt_get('key') or { '' }) == 'ok'
 	// the key itself must never be written to the database
@@ -338,7 +338,7 @@ fn test_key_failure_retries_later_and_publisher_still_starts() {
 	h.rt.tick(1000 + mqtt_key_retry + 1, mut store)
 	assert ctr.n == 2
 	// config re-sent now that the key is known
-	last := json.decode(MqttCfgCmd, h.pipes[0].lines.last()) or { panic(err) }
+	last := json2.decode[MqttCfgCmd](h.pipes[0].lines.last()) or { panic(err) }
 	assert last.key == 'ab'.repeat(64)
 }
 
