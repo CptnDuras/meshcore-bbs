@@ -1,6 +1,6 @@
 module main
 
-import json
+import json2
 import os
 import sync
 import time
@@ -62,17 +62,17 @@ pub:
 
 pub struct MqttRuntime {
 pub mut:
-	factory    fn () !MqttPipe = unsafe { nil }
-	ident      MqttIdentity
-	key        string // 64-byte private key hex; memory only, never persisted
-	key_loader fn () !string = unsafe { nil } // fetches the key from the radio
+	factory      fn () !MqttPipe = unsafe { nil }
+	ident        MqttIdentity
+	key          string // 64-byte private key hex; memory only, never persisted
+	key_loader   fn () !string = unsafe { nil } // fetches the key from the radio
 	next_key_try i64
-	dropped    int
-	pipes      []MqttPipe // 0 or 1 element
-	sent_rev   int = -1
-	next_start i64
-	last_state string
-	mu         &sync.Mutex = sync.new_mutex()
+	dropped      int
+	pipes        []MqttPipe // 0 or 1 element
+	sent_rev     int = -1
+	next_start   i64
+	last_state   string
+	mu           &sync.Mutex = sync.new_mutex()
 }
 
 // mqtt_needs_key is true when any enabled broker authenticates with a signed
@@ -90,28 +90,30 @@ fn mqtt_config_line(cfg MqttConfig, ident MqttIdentity, key string) string {
 	mut brokers := []MqttCfgBroker{}
 	for b in cfg.brokers {
 		brokers << MqttCfgBroker{
-			id:        b.id
-			name:      b.name
-			host:      b.host
-			port:      b.port
+			id: b.id
+			name: b.name
+			host: b.host
+			port: b.port
 			transport: b.transport
-			path:      b.path
-			auth:      b.auth
-			audience:  b.audience
-			username:  b.username
-			password:  b.password
+			path: b.path
+			auth: b.auth
+			audience: b.audience
+			username: b.username
+			password: b.password
 		}
 	}
-	return json.encode(MqttCfgCmd{
-		cmd:       'config'
-		iata:      cfg.iata
-		origin:    ident.origin
+	return json2.encode(MqttCfgCmd{
+		cmd: 'config'
+		iata: cfg.iata
+		origin: ident.origin
 		origin_id: ident.origin_id
-		model:     ident.model
-		fw:        ident.fw
-		key:       if mqtt_needs_key(cfg) { key } else { '' }
-		brokers:   brokers
-	})
+		model: ident.model
+		fw: ident.fw
+		key: if mqtt_needs_key(cfg) { key } else { '' }
+		brokers: brokers
+	},
+		escape_unicode: true
+	)
 }
 
 // MqttStatusMsg is one line the publisher prints on stdout.
@@ -126,7 +128,7 @@ struct MqttStatusMsg {
 // apply_status applies one publisher status line to the store. Telemetry only:
 // it never touches the configuration revision. Malformed lines are ignored.
 fn apply_status(mut store Store, line string) {
-	m := json.decode(MqttStatusMsg, line) or { return }
+	m := json2.decode[MqttStatusMsg](line) or { return }
 	if m.id <= 0 {
 		return
 	}
@@ -252,7 +254,7 @@ pub fn (mut r MqttRuntime) on_packet(ts i64, snr f64, rssi f64, raw []u8) {
 	mut cmd := map[string]string{}
 	cmd['cmd'] = 'packet'
 	cmd['payload'] = pj
-	if !r.pipes[0].write_line(json.encode(cmd)) {
+	if !r.pipes[0].write_line(json2.encode(cmd, escape_unicode: true)) {
 		r.dropped++
 	}
 }
@@ -265,7 +267,6 @@ mut:
 	proc &os.Process = unsafe { nil }
 	ch   chan string // lines to the publisher's stdin
 	sch  chan string // status lines from the publisher's stdout
-mut:
 	done bool // set once the publisher is gone; tells the helper threads to exit
 }
 
@@ -286,8 +287,8 @@ pub fn new_process_pipe(python string, script string, log_path string) !MqttPipe
 	// SIGPIPE must not kill the daemon if the publisher dies mid-write.
 	os.signal_ignore(.pipe)
 	mut p := os.new_process('/bin/sh')
-	p.set_args(['-c', 'exec ' + sh_quote(python) + ' ' + sh_quote(script) + ' 2>>' +
-		sh_quote(log_path)])
+	p.set_args(['-c',
+		'exec ' + sh_quote(python) + ' ' + sh_quote(script) + ' 2>>' + sh_quote(log_path)])
 	p.set_redirect_stdio()
 	p.run()
 	if p.status != .running {
@@ -295,8 +296,8 @@ pub fn new_process_pipe(python string, script string, log_path string) !MqttPipe
 	}
 	mut pp := &ProcessPipe{
 		proc: p
-		ch:   chan string{cap: 512}
-		sch:  chan string{cap: 256}
+		ch: chan string{ cap: 512 }
+		sch: chan string{ cap: 256 }
 	}
 	spawn pipe_writer(mut pp)
 	spawn pipe_status_reader(mut pp)
@@ -339,8 +340,10 @@ fn pipe_status_reader(mut pp ProcessPipe) {
 			buf = buf[i + 1..]
 			if line.len > 0 {
 				select {
-					pp.sch <- line {}
-					else {}
+					pp.sch <- line {
+					}
+					else {
+					}
 				}
 			}
 		}

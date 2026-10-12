@@ -54,10 +54,10 @@ fn new_harness(mut store Store) &Harness {
 	mut h := &Harness{
 		rt: MqttRuntime{
 			ident: MqttIdentity{
-				origin:    'MESHBBS'
+				origin: 'MESHBBS'
 				origin_id: 'AB'.repeat(32)
-				model:     'Heltec V3'
-				fw:        '1.17.1'
+				model: 'Heltec V3'
+				fw: '1.17.1'
 			}
 		}
 	}
@@ -76,12 +76,12 @@ fn enabled_store() Store {
 	store.mqtt_set('enabled', '1') or { panic(err) }
 	store.mqtt_set('iata', 'BYG') or { panic(err) }
 	store.add_mqtt_broker(MqttBroker{
-		name:      'local'
-		host:      '127.0.0.1'
-		port:      1883
+		name: 'local'
+		host: '127.0.0.1'
+		port: 1883
 		transport: 'tcp'
-		auth:      'none'
-		enabled:   true
+		auth: 'none'
+		enabled: true
 	}) or { panic(err) }
 	return store
 }
@@ -198,9 +198,9 @@ fn test_on_packet_publishes_when_running() {
 	raw := [u8(0x09), 0x02, 0xAA, 0xBB, 0x01, 0x02, 0x03, 0x04, 0x05]
 	h.rt.on_packet(1760000000, 5.5, -97.0, raw)
 	assert h.pipes[0].lines.len == 2
-	cmd := json.decode(map[string]string, h.pipes[0].lines[1]) or { panic(err) }
+	cmd := json.decode(map[string]string{}, h.pipes[0].lines[1]) or { panic(err) }
 	assert cmd['cmd'] == 'packet'
-	inner := json.decode(map[string]string, cmd['payload']) or { panic(err) }
+	inner := json.decode(map[string]string{}, cmd['payload']) or { panic(err) }
 	assert inner['hash'] == '23ADB40BCDA9A241'
 	assert inner['origin'] == 'MESHBBS'
 }
@@ -231,7 +231,7 @@ fn test_full_pipe_drops_and_counts() {
 fn test_needs_key() {
 	mut cfg := MqttConfig{
 		enabled: true
-		iata:    'BYG'
+		iata: 'BYG'
 	}
 	assert !mqtt_needs_key(cfg)
 	cfg.brokers << MqttBroker{
@@ -247,13 +247,13 @@ fn test_needs_key() {
 fn test_key_goes_in_config_line_only_when_needed() {
 	mut store := enabled_store()
 	store.add_mqtt_broker(MqttBroker{
-		name:      'mm'
-		host:      'mqtt.meshmapper.net'
-		port:      443
+		name: 'mm'
+		host: 'mqtt.meshmapper.net'
+		port: 443
 		transport: 'wss'
-		auth:      'token'
-		audience:  'mqtt.meshmapper.net'
-		enabled:   true
+		auth: 'token'
+		audience: 'mqtt.meshmapper.net'
+		enabled: true
 	}) or { panic(err) }
 	mut h := new_harness(mut store)
 	h.rt.key = 'cd'.repeat(64)
@@ -272,13 +272,13 @@ fn test_key_goes_in_config_line_only_when_needed() {
 fn test_key_loaded_lazily_for_token_brokers() {
 	mut store := enabled_store()
 	store.add_mqtt_broker(MqttBroker{
-		name:      'mm'
-		host:      'mqtt.meshmapper.net'
-		port:      443
+		name: 'mm'
+		host: 'mqtt.meshmapper.net'
+		port: 443
 		transport: 'wss'
-		auth:      'token'
-		audience:  'mqtt.meshmapper.net'
-		enabled:   true
+		auth: 'token'
+		audience: 'mqtt.meshmapper.net'
+		enabled: true
 	}) or { panic(err) }
 	mut h := new_harness(mut store)
 	mut ctr := &Counter{}
@@ -313,13 +313,13 @@ fn test_key_not_requested_without_token_brokers() {
 fn test_key_failure_retries_later_and_publisher_still_starts() {
 	mut store := enabled_store()
 	store.add_mqtt_broker(MqttBroker{
-		name:      'mm'
-		host:      'mqtt.meshmapper.net'
-		port:      443
+		name: 'mm'
+		host: 'mqtt.meshmapper.net'
+		port: 443
 		transport: 'wss'
-		auth:      'token'
-		audience:  'x'
-		enabled:   true
+		auth: 'token'
+		audience: 'x'
+		enabled: true
 	}) or { panic(err) }
 	mut h := new_harness(mut store)
 	mut ctr := &Counter{}

@@ -2,10 +2,9 @@ import io
 import json
 
 import ed25519_orlp as ed
-import pytest
-
 import publisher as pub_mod
-from publisher import Publisher, StatusSink
+import pytest
+from publisher import Publisher
 
 PUB, PRV, _ = ed.ed25519_create_keypair(bytes(range(32)))
 PUBHEX = PUB.hex().upper()

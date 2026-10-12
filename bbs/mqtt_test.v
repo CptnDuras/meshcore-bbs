@@ -81,12 +81,12 @@ fn test_valid_iata() {
 
 fn test_validate_broker() {
 	ok := MqttBroker{
-		name:      'x'
-		host:      'mqtt.example.org'
-		port:      443
+		name: 'x'
+		host: 'mqtt.example.org'
+		port: 443
 		transport: 'wss'
-		auth:      'token'
-		audience:  'mqtt.example.org'
+		auth: 'token'
+		audience: 'mqtt.example.org'
 	}
 	assert mqtt_validate_broker(ok) == ''
 	mut b := ok
@@ -144,7 +144,7 @@ fn test_presets_are_valid_and_known() {
 fn test_observer_packet_json() {
 	raw := [u8(0x09), 0x02, 0xAA, 0xBB, 0x01, 0x02, 0x03, 0x04, 0x05]
 	s := observer_packet_json('MESHBBS', 'ABCD', 1760000000, 5.5, -97.0, raw) or { panic(err) }
-	m := json.decode(map[string]string, s) or { panic('payload must be a flat string map: ${err}') }
+	m := json.decode(map[string]string{}, s) or { panic('payload must be a flat string map: ${err}') }
 	assert m['origin'] == 'MESHBBS'
 	assert m['origin_id'] == 'ABCD'
 	assert m['type'] == 'PACKET'
@@ -171,7 +171,7 @@ fn test_observer_packet_json_rejects_unparseable() {
 
 fn test_observer_status_json() {
 	s := observer_status_json('online', 'MESHBBS', 'ABCD', 1760000000, 'Heltec V3', '1.17.1')
-	m := json.decode(map[string]string, s) or { panic(err) }
+	m := json.decode(map[string]string{}, s) or { panic(err) }
 	assert m['status'] == 'online'
 	assert m['origin'] == 'MESHBBS'
 	assert m['origin_id'] == 'ABCD'

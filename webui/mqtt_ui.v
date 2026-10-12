@@ -73,32 +73,32 @@ fn mqtt_load(mut db sqlite.DB) MqttPage {
 	for r in rows {
 		v := r.vals
 		brokers << MqttBrokerView{
-			id:           v[0].int()
-			name:         v[1]
-			enabled:      v[2] == '1'
-			host:         v[3]
-			port:         v[4].int()
-			transport:    v[5]
-			path:         v[6]
-			auth:         v[7]
-			username:     v[8]
+			id: v[0].int()
+			name: v[1]
+			enabled: v[2] == '1'
+			host: v[3]
+			port: v[4].int()
+			transport: v[5]
+			path: v[6]
+			auth: v[7]
+			username: v[8]
 			has_password: v[9].len > 0
-			audience:     v[10]
-			state:        v[11]
-			last_error:   v[12]
-			published:    v[13].i64()
-			updated:      if v[14] == '0' { '' } else { fmt_ts(v[14]) }
+			audience: v[10]
+			state: v[11]
+			last_error: v[12]
+			published: v[13].i64()
+			updated: if v[14] == '0' { '' } else { fmt_ts(v[14]) }
 		}
 	}
 	return MqttPage{
 		available: true
-		enabled:   mqtt_setting(mut db, 'enabled') == '1'
-		iata:      mqtt_setting(mut db, 'iata')
-		state:     mqtt_setting(mut db, 'state')
-		key:       mqtt_setting(mut db, 'key')
-		rev:       mqtt_setting(mut db, 'rev')
-		brokers:   brokers
-		presets:   mqttcfg.preset_names()
+		enabled: mqtt_setting(mut db, 'enabled') == '1'
+		iata: mqtt_setting(mut db, 'iata')
+		state: mqtt_setting(mut db, 'state')
+		key: mqtt_setting(mut db, 'key')
+		rev: mqtt_setting(mut db, 'rev')
+		brokers: brokers
+		presets: mqttcfg.preset_names()
 	}
 }
 
@@ -123,9 +123,19 @@ fn mqtt_add_broker(mut db sqlite.DB, form map[string]string) string {
 	if err.len > 0 {
 		return err
 	}
-	db.exec_param_many('INSERT INTO mqtt_brokers (name, enabled, host, port, transport, path, auth, username, password, audience, created) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-		[b.name, '1', b.host, b.port.str(), b.transport, b.path, b.auth, b.username, b.password,
-		b.audience, time.now().unix().str()]) or { return 'database error: ${err}' }
+	db.exec_param_many('INSERT INTO mqtt_brokers (name, enabled, host, port, transport, path, auth, username, password, audience, created) VALUES (?,?,?,?,?,?,?,?,?,?,?)', [
+		b.name,
+		'1',
+		b.host,
+		b.port.str(),
+		b.transport,
+		b.path,
+		b.auth,
+		b.username,
+		b.password,
+		b.audience,
+		time.now().unix().str(),
+	]) or { return 'database error: ${err}' }
 	mqtt_bump_rev(mut db)
 	return ''
 }
@@ -153,9 +163,18 @@ fn mqtt_update_broker(mut db sqlite.DB, id int, form map[string]string) string {
 	if verr.len > 0 {
 		return verr
 	}
-	db.exec_param_many('UPDATE mqtt_brokers SET name=?, host=?, port=?, transport=?, path=?, auth=?, username=?, password=?, audience=? WHERE id=?',
-		[b.name, b.host, b.port.str(), b.transport, b.path, b.auth, b.username, b.password,
-		b.audience, id.str()]) or { return 'database error: ${err}' }
+	db.exec_param_many('UPDATE mqtt_brokers SET name=?, host=?, port=?, transport=?, path=?, auth=?, username=?, password=?, audience=? WHERE id=?', [
+		b.name,
+		b.host,
+		b.port.str(),
+		b.transport,
+		b.path,
+		b.auth,
+		b.username,
+		b.password,
+		b.audience,
+		id.str(),
+	]) or { return 'database error: ${err}' }
 	mqtt_bump_rev(mut db)
 	return ''
 }
@@ -190,6 +209,5 @@ fn pw_hint(has bool) string {
 // h HTML-escapes a value for use in element text or a quoted attribute.
 // veb's @{} does NOT escape, so every user-controlled value goes through this.
 fn h(s string) string {
-	return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'",
-		'&#39;')
+	return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;')
 }

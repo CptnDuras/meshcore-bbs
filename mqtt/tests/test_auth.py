@@ -2,9 +2,8 @@ import base64
 import json
 import time
 
-import ed25519_orlp as ed
-
 import auth
+import ed25519_orlp as ed
 
 
 def _keys():

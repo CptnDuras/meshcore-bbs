@@ -83,14 +83,14 @@ pub fn validate(b Broker) string {
 
 fn token_wss(name string, host string) Broker {
 	return Broker{
-		name:      name
-		host:      host
-		port:      443
+		name: name
+		host: host
+		port: 443
 		transport: 'wss'
-		path:      '/'
-		auth:      'token'
-		audience:  host
-		enabled:   true
+		path: '/'
+		auth: 'token'
+		audience: host
+		enabled: true
 	}
 }
 
@@ -107,12 +107,12 @@ pub fn preset(name string) ?Broker {
 		'letsmesh-eu' { token_wss('letsmesh-eu', 'mqtt-eu-v1.letsmesh.net') }
 		'local' {
 			Broker{
-				name:      'local'
-				host:      '127.0.0.1'
-				port:      1883
+				name: 'local'
+				host: '127.0.0.1'
+				port: 1883
 				transport: 'tcp'
-				auth:      'none'
-				enabled:   true
+				auth: 'none'
+				enabled: true
 			}
 		}
 		else { none }
@@ -132,16 +132,16 @@ pub fn broker_from_form(f map[string]string) (Broker, string) {
 		return Broker{}, 'port must be a number'
 	}
 	b := Broker{
-		name:      (f['name'] or { '' }).trim_space()
-		enabled:   true
-		host:      (f['host'] or { '' }).trim_space()
-		port:      port_s.int()
+		name: (f['name'] or { '' }).trim_space()
+		enabled: true
+		host: (f['host'] or { '' }).trim_space()
+		port: port_s.int()
 		transport: (f['transport'] or { 'tcp' }).trim_space()
-		path:      (f['path'] or { '' }).trim_space()
-		auth:      (f['auth'] or { 'none' }).trim_space()
-		username:  (f['username'] or { '' }).trim_space()
-		password:  f['password'] or { '' }
-		audience:  (f['audience'] or { '' }).trim_space()
+		path: (f['path'] or { '' }).trim_space()
+		auth: (f['auth'] or { 'none' }).trim_space()
+		username: (f['username'] or { '' }).trim_space()
+		password: f['password'] or { '' }
+		audience: (f['audience'] or { '' }).trim_space()
 	}
 	err := validate(b)
 	return b, err

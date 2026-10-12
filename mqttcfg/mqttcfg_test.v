@@ -2,12 +2,12 @@ module mqttcfg
 
 fn good() Broker {
 	return Broker{
-		name:      'x'
-		host:      'mqtt.example.org'
-		port:      443
+		name: 'x'
+		host: 'mqtt.example.org'
+		port: 443
 		transport: 'wss'
-		auth:      'token'
-		audience:  'mqtt.example.org'
+		auth: 'token'
+		audience: 'mqtt.example.org'
 	}
 }
 
