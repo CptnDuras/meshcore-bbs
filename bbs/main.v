@@ -56,14 +56,9 @@ fn main() {
 		mqtt_ident.model = di.payload.model
 		mqtt_ident.fw = di.payload.fw_version
 	}
-	home := mqtt_home()
 	mut mqtt := &MqttRuntime{
 		ident:      mqtt_ident
-		factory:    fn [home] () !MqttPipe {
-			return new_process_pipe(os.getenv_opt('MESHBBS_MQTT_PYTHON') or {
-				os.join_path(home, 'venv', 'bin', 'python')
-			}, os.join_path(home, 'mqtt', 'publisher.py'), os.join_path(home, 'meshbbs-mqtt.log'))
-		}
+		factory:    new_native_pipe
 		key_loader: fn [mut mc] () !string {
 			return mc.export_private_key()!.hex()
 		}

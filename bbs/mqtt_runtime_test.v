@@ -155,10 +155,10 @@ fn test_factory_failure_is_survivable() {
 	mut store := enabled_store()
 	mut h := new_harness(mut store)
 	h.rt.factory = fn () !MqttPipe {
-		return error('python not found')
+		return error('publisher unavailable')
 	}
 	h.rt.tick(1000, mut store)
-	assert (store.mqtt_get('state') or { '' }).contains('python not found')
+	assert (store.mqtt_get('state') or { '' }).contains('publisher unavailable')
 	assert h.starts == 0
 }
 

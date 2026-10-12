@@ -5,10 +5,10 @@ import os
 import sync
 import time
 
-// Daemon side of the optional MQTT observer. Owns the lifecycle of the Python
-// publisher process (mqtt/publisher.py): starts it only while MQTT is enabled
-// and fully configured, hot-reloads configuration when the web UI changes it,
-// restarts it (with backoff) if it dies, and forwards heard packets to it.
+// Daemon side of the optional MQTT observer. Owns the lifecycle of the in-process
+// publisher (mqtt_publisher.v): starts it only while MQTT is enabled and fully
+// configured, hot-reloads configuration when the web UI changes it, restarts it
+// (with backoff) if it dies, and forwards heard packets to it.
 //
 // The radio loop must never block on MQTT, so packet delivery is a bounded,
 // non-blocking queue: if the publisher stalls, packets are dropped and counted.
@@ -259,160 +259,8 @@ pub fn (mut r MqttRuntime) on_packet(ts i64, snr f64, rssi f64, raw []u8) {
 	}
 }
 
-// --- real publisher process -------------------------------------------------
-
-@[heap]
-pub struct ProcessPipe {
-mut:
-	proc &os.Process = unsafe { nil }
-	ch   chan string // lines to the publisher's stdin
-	sch  chan string // status lines from the publisher's stdout
-	done bool // set once the publisher is gone; tells the helper threads to exit
-}
-
-fn sh_quote(s string) string {
-	return "'" + s.replace("'", "'\\''") + "'"
-}
-
-// new_process_pipe starts mqtt/publisher.py. stdin carries commands in, stdout
-// carries status lines out (drained by a reader thread), and stderr goes to a
-// log file so an unread pipe can never block the publisher.
-pub fn new_process_pipe(python string, script string, log_path string) !MqttPipe {
-	if !os.exists(python) {
-		return error('python not found at ${python}')
-	}
-	if !os.exists(script) {
-		return error('publisher script not found at ${script}')
-	}
-	// SIGPIPE must not kill the daemon if the publisher dies mid-write.
-	os.signal_ignore(.pipe)
-	mut p := os.new_process('/bin/sh')
-	p.set_args(['-c',
-		'exec ' + sh_quote(python) + ' ' + sh_quote(script) + ' 2>>' + sh_quote(log_path)])
-	p.set_redirect_stdio()
-	p.run()
-	if p.status != .running {
-		return error('publisher failed to start: ${p.err}')
-	}
-	mut pp := &ProcessPipe{
-		proc: p
-		ch: chan string{ cap: 512 }
-		sch: chan string{ cap: 256 }
-	}
-	spawn pipe_writer(mut pp)
-	spawn pipe_status_reader(mut pp)
-	return pp
-}
-
-fn pipe_writer(mut pp ProcessPipe) {
-	for {
-		line := <-pp.ch or { break }
-		if pp.done {
-			break
-		}
-		pp.proc.stdin_write(line + '\n')
-	}
-}
-
-// pipe_status_reader splits the publisher's stdout into lines. If the queue is
-// full the oldest-unread line wins (new ones are dropped): status is advisory.
-fn pipe_status_reader(mut pp ProcessPipe) {
-	mut buf := ''
-	for {
-		// stdout_read is NON-blocking: '' just means "nothing right now".
-		// Only the owner (alive()/stop()) calls waitpid; this thread exits via
-		// the `done` flag, after one last drain once the publisher is gone.
-		chunk := pp.proc.stdout_read()
-		if chunk.len == 0 {
-			if pp.done {
-				break
-			}
-			time.sleep(100 * time.millisecond)
-			continue
-		}
-		buf += chunk
-		for {
-			i := buf.index_u8(`\n`)
-			if i < 0 {
-				break
-			}
-			line := buf[..i].trim_space()
-			buf = buf[i + 1..]
-			if line.len > 0 {
-				select {
-					pp.sch <- line {
-					}
-					else {
-					}
-				}
-			}
-		}
-		if buf.len > 65536 { // runaway line without a newline
-			buf = ''
-		}
-	}
-	pp.sch.close()
-}
-
-pub fn (mut pp ProcessPipe) read_status() ?string {
-	select {
-		line := <-pp.sch {
-			if line.len == 0 { // channel closed (publisher exited)
-				return none
-			}
-			return line
-		}
-		else {
-			return none
-		}
-	}
-	return none
-}
-
-pub fn (mut pp ProcessPipe) alive() bool {
-	if pp.done {
-		return false
-	}
-	if !pp.proc.is_alive() {
-		pp.done = true
-		return false
-	}
-	return true
-}
-
-pub fn (mut pp ProcessPipe) write_line(s string) bool {
-	select {
-		pp.ch <- s {
-			return true
-		}
-		else {
-			return false
-		}
-	}
-	return false
-}
-
-// stop lets the writer drain (so a queued "stop" reaches the publisher), then
-// waits briefly for a clean exit and kills it if it lingers.
-pub fn (mut pp ProcessPipe) stop() {
-	pp.ch.close()
-	for _ in 0 .. 30 {
-		if !pp.proc.is_alive() {
-			break
-		}
-		time.sleep(100 * time.millisecond)
-	}
-	if pp.proc.is_alive() {
-		pp.proc.signal_kill()
-	}
-	pp.proc.wait()
-	pp.done = true
-	time.sleep(250 * time.millisecond) // let the reader take its last drain and exit
-	pp.proc.close()
-}
-
-// mqtt_home is the directory holding mqtt/publisher.py and the venv: the
-// MESHBBS_HOME env var, else the directory containing the meshbbs binary.
+// mqtt_home is the directory holding optional side files (such as cacert.pem):
+// the MESHBBS_HOME env var, else the directory containing the meshbbs binary.
 pub fn mqtt_home() string {
 	return os.getenv_opt('MESHBBS_HOME') or { os.dir(os.executable()) }
 }

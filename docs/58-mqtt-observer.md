@@ -7,9 +7,9 @@ from the web UI (`/mqtt`).
 ## How it fits together
 
 ```
-radio ──0x88 LOG_RX_DATA──▶ daemon (bbs/) ──stdin JSON lines──▶ mqtt/publisher.py ──▶ brokers
-                              ▲  │                                  │
-          web UI /mqtt ──DB──┘  └◀────── status JSON lines ◀────────┘
+radio ──0x88 LOG_RX_DATA──▶ daemon (bbs/) ── JSON command lines ──▶ publisher ──▶ brokers
+                              ▲  │            (in-process threads)        │
+          web UI /mqtt ──DB──┘  └◀────────── JSON status lines ◀─────────┘
 ```
 
 - **Web UI** (`webui/mqtt_ui.v`) edits `mqtt_settings` / `mqtt_brokers` in the shared DB and
@@ -20,10 +20,28 @@ radio ──0x88 LOG_RX_DATA──▶ daemon (bbs/) ──stdin JSON lines──
   disabled; restarts it with a 30 s backoff if it dies. Heard packets are forwarded through a
   bounded, non-blocking queue — if the publisher stalls, packets are dropped and counted, the
   radio loop never waits on MQTT.
-- **Publisher** (`mqtt/publisher.py`, paho-mqtt) holds the broker connections (tcp / tls / ws /
-  wss), publishes retained online/offline status with a last-will, and reports per-broker state
-  back on stdout; the daemon writes it to `mqtt_status` for the UI.
-- **V TLS is broken on titan**, which is why the network client is Python, not V.
+- **Publisher** (`bbs/mqtt_publisher.v`) runs **inside the daemon binary** on its own threads
+  and speaks to the daemon through the `MqttPipe` interface (JSON command lines in, JSON status
+  lines out). One worker thread per broker dials, sends CONNECT with a retained `offline`
+  last-will, publishes retained `online`, sends QoS 0 packets, keeps the link alive (PINGREQ,
+  60 s keepalive), reconnects with 1 s → 120 s backoff, and renews token credentials before
+  they expire. Per-broker state is reported back and the daemon writes it to `mqtt_status`.
+- **No external runtime**: the MQTT 3.1.1 codec (`mqtt_packet.v`), the RFC 6455 WebSocket
+  client (`mqtt_ws.v`), TCP/TLS/WS/WSS transports (`mqtt_transport.v`) and Ed25519 signing
+  (`mqtt_token.v`) are all V. The result is a single self-contained binary — no Python, no
+  venv, no `paho-mqtt`.
+
+## Transport security
+
+- `tls` and `wss` **always verify** the broker's certificate chain and host name; there is no
+  "skip verification" option. (V's TLS only validates when asked to, so the transport
+  explicitly passes `validate: true` and a CA bundle.)
+- The CA bundle is the first of: `$MESHBBS_CA_FILE` (replaces the system bundle, handy for a
+  private CA), `<MESHBBS_HOME>/cacert.pem` (ship one next to the binary for hosts without a
+  system bundle), then the usual system locations (`/etc/ssl/certs/ca-certificates.crt`,
+  `/etc/pki/tls/certs/ca-bundle.crt`, `/usr/local/share/certs/ca-root-nss.crt`,
+  `/etc/ssl/cert.pem`, …). If none exists the broker shows an error and nothing is sent.
+- A broker addressed by IP will fail the host-name check unless the certificate lists that IP.
 
 ## Topics and payloads
 
@@ -51,26 +69,34 @@ Same shape the repeater bridges publish, so existing consumers accept it:
 ## Setup
 
 ```sh
-# once, in the project venv (FreeBSD compiles ed25519-orlp; needs cc)
-venv/bin/pip install -r mqtt/requirements.txt
-# rebuild the daemon (needs the meshcore-v branch with 0x88 + key export), then restart it
-./build.sh
+./build.sh          # builds the daemon; the MQTT observer is part of it
 ```
 
 Then open the web UI → **MQTT**: set the IATA code (nearest airport, e.g. `BYG`), add brokers
 from presets (`meshmapper`, `waev-a`, `waev-b`, `letsmesh-us`, `letsmesh-eu`, `local`) or a custom
-one, and tick **Enable**. Logs: `meshbbs-mqtt.log` (publisher stderr).
+one, and tick **Enable**. Status per broker (connecting / connected / error with the reason) is
+shown on the same page.
 
 Joining a **new region** on MeshMapper is a separate, manual step on their side (≥1, ideally
 2–3 observers; the IATA code becomes `<code>.meshmapper.net`).
 
 ## Tests
 
-- V: `v test bbs mqttcfg webui` (store, packet parsing/hash against independently computed
-  values, runtime lifecycle with a fake pipe, web UI data layer, ORM↔web-UI schema contract)
-- Python: `cd mqtt && python -m pytest tests` (auth tokens, publisher with fake paho clients)
-- The real-process path (ProcessPipe + publisher + broker) was verified end-to-end on titan
-  with an `amqtt` broker; it is not part of the automated suite.
+- `v test bbs mqttcfg webui` covers: store and packet parsing/hash against independently
+  computed values, runtime lifecycle with a fake pipe, the MQTT/WebSocket wire codecs, Ed25519
+  signatures and tokens pinned byte-for-byte to the reference implementation (`ed25519_orlp`),
+  the publisher (real worker threads against an in-memory fake broker: login/will, status,
+  packet routing, reconfiguration, token refresh, reconnect, stop), and the web UI data layer.
+- `bbs/mqtt_integration_test.v` drives the real transports against a real broker and is skipped
+  unless pointed at one:
+
+  ```sh
+  MQTT_IT_TCP=127.0.0.1:1883 MQTT_IT_WS=127.0.0.1:9001/ \
+  MQTT_IT_TLS=localhost:8883 MQTT_IT_WSS=localhost:9002/ \
+  MESHBBS_CA_FILE=ca.pem v test bbs/mqtt_integration_test.v
+  ```
+
+  (A throwaway Mosquitto with those four listeners and a private CA is enough.)
 
 ## Layout
 
@@ -78,6 +104,8 @@ Joining a **new region** on MeshMapper is a separate, manual step on their side 
 |---|---|
 | `mqttcfg/` | validation, presets, form parsing shared by daemon and web UI |
 | `bbs/mqtt.v` | config loading, packet parsing/hash, payload builders |
-| `bbs/mqtt_runtime.v` | publisher lifecycle, process pipe, key loading, status intake |
+| `bbs/mqtt_runtime.v` | publisher lifecycle, key loading, status intake |
+| `bbs/mqtt_publisher.v` | in-process publisher: per-broker workers, manager, `MqttPipe` |
+| `bbs/mqtt_packet.v`, `mqtt_ws.v`, `mqtt_transport.v` | MQTT 3.1.1 codec, WebSocket client, TCP/TLS/WS/WSS transports |
+| `bbs/mqtt_token.v` | Ed25519 (expanded-key) signing and login tokens |
 | `webui/mqtt_ui.v`, `templates/mqtt.html` | settings page (all values HTML-escaped) |
-| `mqtt/` | `publisher.py`, `auth.py`, `requirements.txt`, tests |
