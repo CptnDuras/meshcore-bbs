@@ -379,3 +379,118 @@ fn test_status_does_not_bump_config_revision() {
 	assert store.mqtt_rev() == rev
 	assert h.pipes[0].lines.len == 1 // no spurious config resend
 }
+
+// --- activity log ---------------------------------------------------------
+
+const log_test_raw = [u8(0x09), 0x02, 0xAA, 0xBB, 0x01, 0x02, 0x03, 0x04, 0x05]
+
+fn test_log_records_packets_and_events() {
+	mut store := enabled_store()
+	mut h := new_harness(mut store)
+	h.rt.tick(1000, mut store)
+	h.rt.on_packet(1760000000, 5.5, -97.0, log_test_raw)
+	h.rt.tick(1001, mut store)
+	pk := store.list_mqtt_log('packet', 10)
+	assert pk.len == 1
+	assert pk[0].ts == 1760000000
+	assert pk[0].summary.contains('23ADB40BCDA9A241')
+	assert pk[0].summary.contains('SNR 5')
+	assert pk[0].summary.contains('flood') || pk[0].summary.contains('direct')
+	inner := json2.decode[map[string]string](pk[0].detail) or { panic(err) } // exactly what was published
+	assert inner['hash'] == '23ADB40BCDA9A241'
+	ev := store.list_mqtt_log('other', 20)
+	mut text := ''
+	for e in ev {
+		assert e.kind == 'daemon'
+		text += e.summary + '\n'
+	}
+	assert text.contains('publisher started')
+	assert text.contains('configuration sent: IATA BYG, 1 broker(s): local')
+	assert text.contains('running')
+}
+
+fn test_log_nothing_when_off_or_garbage() {
+	mut store := new_store('sqlite::memory:') or { panic(err) }
+	store.migrate() or { panic(err) }
+	mut h := new_harness(mut store)
+	h.rt.tick(1000, mut store)
+	h.rt.on_packet(1, 0, 0, log_test_raw) // not running: nothing is published, so nothing is logged
+	h.rt.tick(1001, mut store)
+	assert store.list_mqtt_log('packet', 10).len == 0
+	mut store2 := enabled_store()
+	mut h2 := new_harness(mut store2)
+	h2.rt.tick(1000, mut store2)
+	h2.rt.on_packet(1, 0, 0, [u8(1)]) // garbage is not published either
+	h2.rt.tick(1001, mut store2)
+	assert store2.list_mqtt_log('packet', 10).len == 0
+}
+
+fn test_log_broker_state_changes_once() {
+	mut store := enabled_store()
+	mut h := new_harness(mut store)
+	h.rt.tick(1000, mut store)
+	id := store.list_mqtt_brokers()[0].id
+	h.pipes[0].status << '{"t":"status","id":${id},"state":"connecting","error":"","published":0}'
+	h.pipes[0].status << '{"t":"status","id":${id},"state":"error","error":"connection refused","published":0}'
+	h.pipes[0].status << '{"t":"status","id":${id},"state":"error","error":"connection refused","published":0}'
+	h.pipes[0].status << '{"t":"status","id":${id},"state":"connected","error":"","published":0}'
+	h.rt.tick(1001, mut store)
+	b := store.list_mqtt_log('other', 50).filter(it.kind == 'broker')
+	assert b.len == 3 // the repeated error is one entry
+	assert b[0].summary == 'connected'
+	assert b[1].summary == 'error: connection refused'
+	assert b[2].summary == 'connecting'
+	assert b[0].broker == 'local'
+}
+
+fn test_log_records_drops() {
+	mut store := enabled_store()
+	mut h := new_harness(mut store)
+	h.rt.tick(1000, mut store)
+	h.pipes[0].full = true
+	h.rt.on_packet(5, 0, 0, log_test_raw)
+	h.rt.tick(1001, mut store)
+	assert store.list_mqtt_log('packet', 5)[0].summary.starts_with('NOT SENT')
+	assert store.list_mqtt_log('other', 20).any(it.summary.contains('1 packet(s) dropped'))
+	h.rt.tick(1002, mut store) // reported once, not every tick
+	assert store.list_mqtt_log('other', 50).filter(it.summary.contains('dropped')).len == 1
+}
+
+fn test_log_trim_keeps_newest_per_kind() {
+	mut store := new_store('sqlite::memory:') or { panic(err) }
+	store.migrate() or { panic(err) }
+	mut rows := []MqttLog{}
+	for i in 0 .. 10 {
+		rows << MqttLog{
+			ts: i
+			kind: 'packet'
+			summary: 'p${i}'
+		}
+	}
+	for i in 0 .. 6 {
+		rows << MqttLog{
+			ts: i
+			kind: 'daemon'
+			summary: 'd${i}'
+		}
+	}
+	store.add_mqtt_log(rows) or { panic(err) }
+	store.trim_mqtt_log(4, 2) or { panic(err) }
+	pk := store.list_mqtt_log('packet', 100)
+	assert pk.map(it.summary) == ['p9', 'p8', 'p7', 'p6']
+	ot := store.list_mqtt_log('other', 100)
+	assert ot.map(it.summary) == ['d5', 'd4'] // a packet flood never evicts events
+	assert store.list_mqtt_log('', 100).len == 6
+}
+
+fn test_log_queue_is_bounded() {
+	mut store := enabled_store()
+	mut h := new_harness(mut store)
+	h.rt.tick(1000, mut store)
+	for i in 0 .. 3500 {
+		h.rt.on_packet(i64(2000 + i), 0, 0, log_test_raw)
+	}
+	h.rt.tick(1001, mut store)
+	assert store.list_mqtt_log('packet', 10000).len < 3600 // queue cap, not unbounded
+	assert store.list_mqtt_log('other', 50).any(it.summary.contains('not recorded'))
+}

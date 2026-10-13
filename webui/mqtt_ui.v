@@ -211,3 +211,101 @@ fn pw_hint(has bool) string {
 fn h(s string) string {
 	return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;')
 }
+
+// --- activity log page ---
+
+struct MqttLogView {
+	time    string
+	kind    string
+	broker  string
+	summary string
+	detail  string
+}
+
+struct MqttLogPage {
+	available bool
+	kind      string // all | packet | other
+	q         string
+	limit     int
+	rows      []MqttLogView
+	packets   int // totals kept in the table, whatever the filter
+	events    int
+}
+
+fn mqtt_log_limit(s string) int {
+	n := s.int()
+	return if n in [100, 200, 500, 1000, 2000] { n } else { 200 }
+}
+
+fn mqtt_log_kind(s string) string {
+	return if s in ['packet', 'other'] { s } else { 'all' }
+}
+
+// mqtt_log_load reads the newest log rows matching the filters (newest first).
+// kind: all | packet | other (broker and daemon events); q: case-insensitive
+// text that must appear in the summary or broker name.
+fn mqtt_log_load(mut db sqlite.DB, kind string, q string, limit int) MqttLogPage {
+	k := mqtt_log_kind(kind)
+	l := mqtt_log_limit(limit.str())
+	db.exec('SELECT 1 FROM mqtt_log LIMIT 1') or {
+		return MqttLogPage{
+			kind: k
+			q: q
+			limit: l
+		}
+	}
+	mut where := '1=1'
+	if k == 'packet' {
+		where = "kind = 'packet'"
+	} else if k == 'other' {
+		where = "kind != 'packet'"
+	}
+	mut params := []string{}
+	if q.trim_space().len > 0 {
+		where += " AND instr(lower(summary || ' ' || broker), lower(?)) > 0"
+		params << q.trim_space()
+	}
+	params << l.str()
+	rows := db.exec_param_many('SELECT ts, kind, broker, summary, detail FROM mqtt_log WHERE ${where} ORDER BY id DESC LIMIT CAST(? AS INTEGER)',
+		params) or { []sqlite.Row{} }
+	mut out := []MqttLogView{}
+	for r in rows {
+		out << MqttLogView{
+			time: fmt_ts(r.vals[0])
+			kind: r.vals[1]
+			broker: r.vals[2]
+			summary: r.vals[3]
+			detail: r.vals[4]
+		}
+	}
+	count := fn [mut db] (cond string) int {
+		r := db.exec("SELECT COUNT(*) FROM mqtt_log WHERE ${cond}") or { return 0 }
+		return if r.len > 0 { r[0].vals[0].int() } else { 0 }
+	}
+	return MqttLogPage{
+		available: true
+		kind: k
+		q: q
+		limit: l
+		rows: out
+		packets: count("kind = 'packet'")
+		events: count("kind != 'packet'")
+	}
+}
+
+// mqtt_log_text renders rows as plain text, one line per entry, for saving or grepping.
+fn mqtt_log_text(rows []MqttLogView) string {
+	mut sb := []string{}
+	for r in rows {
+		b := if r.broker.len > 0 { ' [${r.broker}]' } else { '' }
+		sb << '${r.time}  ${r.kind}${b}  ${r.summary}'
+		if r.detail.len > 0 {
+			sb << '    ${r.detail}'
+		}
+	}
+	return sb.join('\n') + '\n'
+}
+
+fn limit_sel(cur int, v int) string {
+	return if cur == v { 'selected' } else { '' }
+}

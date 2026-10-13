@@ -19,6 +19,9 @@ fn fresh_db() sqlite.DB {
 	db.exec('CREATE TABLE mqtt_status (id INTEGER PRIMARY KEY AUTOINCREMENT, broker_id INTEGER NOT NULL UNIQUE, state TEXT NOT NULL, last_error TEXT NOT NULL, published INTEGER NOT NULL, updated INTEGER NOT NULL)') or {
 		panic(err)
 	}
+	db.exec('CREATE TABLE mqtt_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, broker TEXT NOT NULL, summary TEXT NOT NULL, detail TEXT NOT NULL)') or {
+		panic(err)
+	}
 	return db
 }
 
@@ -29,6 +32,7 @@ fn test_contract_columns_present() {
 		'mqtt_settings': mqttcfg.settings_columns
 		'mqtt_brokers':  mqttcfg.broker_columns
 		'mqtt_status':   mqttcfg.status_columns
+		'mqtt_log':      mqttcfg.log_columns
 	} {
 		rows := db.exec('PRAGMA table_info(${t})') or { panic(err) }
 		mut got := []string{}
@@ -205,4 +209,62 @@ fn test_h_escapes_html() {
 	assert h('<script>alert(1)</script>') == '&lt;script&gt;alert(1)&lt;/script&gt;'
 	assert h('a"b\'c&d') == 'a&quot;b&#39;c&amp;d'
 	assert h('plain') == 'plain'
+}
+
+fn add_log(mut db sqlite.DB, ts int, kind string, broker string, summary string, detail string) {
+	db.exec_param_many('INSERT INTO mqtt_log (ts, kind, broker, summary, detail) VALUES (?,?,?,?,?)', [ts.str(), kind, broker, summary, detail]) or {
+		panic(err)
+	}
+}
+
+fn test_log_page_filters_and_orders() {
+	mut db := fresh_db()
+	add_log(mut db, 1000, 'daemon', '', 'publisher started', '')
+	add_log(mut db, 1001, 'broker', 'letsmesh-us', 'connected', '')
+	add_log(mut db, 1002, 'packet', '', 'ADVERT flood 80 B  SNR 4  RSSI -90  AAAA1111', '{"hash":"AAAA1111"}')
+	add_log(mut db, 1003, 'packet', '', 'GRP_TXT flood 60 B  SNR -2  RSSI -101  BBBB2222', '{"hash":"BBBB2222"}')
+	all := mqtt_log_load(mut db, 'all', '', 200)
+	assert all.available
+	assert all.rows.map(it.summary.split(' ')[0]) == ['GRP_TXT', 'ADVERT', 'connected', 'publisher']
+	assert all.packets == 2
+	assert all.events == 2
+	assert mqtt_log_load(mut db, 'packet', '', 200).rows.len == 2
+	other := mqtt_log_load(mut db, 'other', '', 200)
+	assert other.rows.map(it.kind) == ['broker', 'daemon']
+	// text filter is case-insensitive and also matches the broker name
+	assert mqtt_log_load(mut db, 'all', 'bbbb', 200).rows.len == 1
+	assert mqtt_log_load(mut db, 'all', 'LETSMESH', 200).rows.len == 1
+	// limit applies to the newest rows
+	lim := mqtt_log_load(mut db, 'all', '', 100)
+	assert lim.limit == 100
+	// '%' and quotes in the filter are plain text, not SQL
+	assert mqtt_log_load(mut db, 'all', "%' OR '1'='1", 200).rows.len == 0
+}
+
+fn test_log_page_without_table_is_unavailable() {
+	path := os.join_path(os.temp_dir(), 'webui_nolog_${os.getpid()}_${time.now().unix_nano()}.db')
+	mut db := sqlite.connect(path) or { panic(err) }
+	p := mqtt_log_load(mut db, 'all', '', 200)
+	assert !p.available
+	assert p.rows.len == 0
+}
+
+fn test_log_helpers() {
+	assert mqtt_log_limit('') == 200
+	assert mqtt_log_limit('500') == 500
+	assert mqtt_log_limit('99999') == 200
+	assert mqtt_log_kind('packet') == 'packet'
+	assert mqtt_log_kind('x') == 'all'
+	txt := mqtt_log_text([MqttLogView{
+		time: 't'
+		kind: 'packet'
+		summary: 's'
+		detail: 'd'
+	}, MqttLogView{
+		time: 't2'
+		kind: 'broker'
+		broker: 'b'
+		summary: 'connected'
+	}])
+	assert txt == 't  packet  s\n    d\nt2  broker [b]  connected\n'
 }

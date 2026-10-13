@@ -1,0 +1,56 @@
+@include 'header.html'
+<h2>MQTT log</h2>
+<p class="muted">Everything the MQTT observer does: each packet it sends to the brokers (with the exact JSON), each
+broker's connection changes and errors, and observer events (start, stop, configuration, key, dropped packets).
+Packets are only logged while the observer is running. The newest 5000 packets and 1000 events are kept.
+&nbsp;<a href="/mqtt">&larr; MQTT settings</a></p>
+
+@if !page.available
+	<p><em>There is no MQTT log yet. Restart the meshbbs daemon once (it creates the table on startup), then reload this page.</em></p>
+@else
+
+<form method="get" action="/mqtt/log" style="margin:.5rem 0">
+	<label>Show
+		<select name="kind">
+			<option value="all" @{sel_attr(page.kind, 'all')}>everything</option>
+			<option value="packet" @{sel_attr(page.kind, 'packet')}>packets</option>
+			<option value="other" @{sel_attr(page.kind, 'other')}>brokers &amp; observer events</option>
+		</select>
+	</label>
+	<label>Containing <input name="q" value="@{h(page.q)}" size="18" placeholder="broker, type, hash..."></label>
+	<label>Latest
+		<select name="limit">
+			<option value="100" @{limit_sel(page.limit, 100)}>100</option>
+			<option value="200" @{limit_sel(page.limit, 200)}>200</option>
+			<option value="500" @{limit_sel(page.limit, 500)}>500</option>
+			<option value="1000" @{limit_sel(page.limit, 1000)}>1000</option>
+			<option value="2000" @{limit_sel(page.limit, 2000)}>2000</option>
+		</select>
+	</label>
+	<button type="submit">Apply</button>
+	<a href="/mqtt/log.txt?kind=@{page.kind}&amp;q=@{urllib.query_escape(page.q)}&amp;limit=@{page.limit}">plain text</a>
+</form>
+<small>@{page.rows.len} shown &middot; @{page.packets} packets and @{page.events} events stored. Reload to refresh.</small>
+
+@if page.rows.len == 0
+	<p><em>No matching entries.</em></p>
+@else
+<table>
+	<tr><th>Time</th><th>Kind</th><th>Broker</th><th>What</th></tr>
+	@for r in page.rows
+		<tr>
+			<td class="mono">@{h(r.time)}</td>
+			<td>@{h(r.kind)}</td>
+			<td>@{h(r.broker)}</td>
+			<td>@{h(r.summary)}
+			@if r.detail.len > 0
+				<details><summary class="muted">published JSON</summary><pre class="mono" style="white-space:pre-wrap;word-break:break-all">@{h(r.detail)}</pre></details>
+			@end
+			</td>
+		</tr>
+	@end
+</table>
+@end
+
+@end
+@include 'footer.html'

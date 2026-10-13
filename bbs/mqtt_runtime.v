@@ -15,6 +15,10 @@ import time
 
 pub const mqtt_restart_backoff = 30 // seconds between publisher restarts
 pub const mqtt_key_retry = 300 // seconds between private-key fetch attempts
+pub const mqtt_log_keep_packets = 5000 // newest packet rows kept in the log
+pub const mqtt_log_keep_other = 1000 // newest event rows kept (broker/daemon)
+const mqtt_log_queue_max = 3000 // entries waiting for the next flush; extras are counted, not kept
+const mqtt_log_trim_every = 60 // seconds between trims
 
 // MqttPipe is the daemon's handle on a running publisher (faked in tests).
 pub interface MqttPipe {
@@ -73,6 +77,115 @@ pub mut:
 	next_start   i64
 	last_state   string
 	mu           &sync.Mutex = sync.new_mutex()
+	// activity log: entries are queued here (cheap, from any thread) and written
+	// to the DB by tick(). It has its own lock so logging is safe wherever the
+	// main lock is or is not held.
+	lmu          &sync.Mutex = sync.new_mutex()
+	log_q        []MqttLog
+	log_over     int // entries that did not fit the queue since the last flush
+	log_dropped  int // r.dropped as of the last flush
+	bstate       map[int]string // last logged state of each broker
+	next_trim    i64
+	now          i64 // time of the latest tick, used to stamp events
+}
+
+// log queues one activity-log entry. Never blocks on the database.
+fn (mut r MqttRuntime) log(ts i64, kind string, broker string, summary string, detail string) {
+	r.lmu.lock()
+	defer {
+		r.lmu.unlock()
+	}
+	if r.log_q.len >= mqtt_log_queue_max {
+		r.log_over++
+		return
+	}
+	r.log_q << MqttLog{
+		ts: ts
+		kind: kind
+		broker: broker
+		summary: summary
+		detail: detail
+	}
+}
+
+fn (mut r MqttRuntime) event(kind string, broker string, summary string) {
+	r.log(r.now, kind, broker, summary, '')
+}
+
+// flush_log writes the queued entries to the DB and trims old rows.
+fn (mut r MqttRuntime) flush_log(now i64, mut store Store) {
+	r.lmu.lock()
+	mut batch := r.log_q.clone()
+	r.log_q.clear()
+	over := r.log_over
+	r.log_over = 0
+	r.lmu.unlock()
+	r.mu.lock()
+	dropped := r.dropped
+	r.mu.unlock()
+	if dropped > r.log_dropped {
+		batch << MqttLog{
+			ts: now
+			kind: 'daemon'
+			summary: '${dropped - r.log_dropped} packet(s) dropped: the publisher is not keeping up'
+		}
+		r.log_dropped = dropped
+	}
+	if over > 0 {
+		batch << MqttLog{
+			ts: now
+			kind: 'daemon'
+			summary: '${over} log entries were not recorded (log queue was full)'
+		}
+	}
+	if batch.len > 0 {
+		store.add_mqtt_log(batch) or {}
+	}
+	if now >= r.next_trim {
+		r.next_trim = now + mqtt_log_trim_every
+		store.trim_mqtt_log(mqtt_log_keep_packets, mqtt_log_keep_other) or {}
+	}
+}
+
+// log_status records a broker's state change (connecting -> connected, an error
+// and its reason, ...). Repeats of the same state are not logged again.
+fn (mut r MqttRuntime) log_status(line string, cfg MqttConfig) {
+	m := json2.decode[MqttStatusMsg](line) or { return }
+	if m.id <= 0 || m.t != 'status' {
+		return
+	}
+	key := '${m.state}|${m.err_msg}'
+	if r.bstate[m.id] == key {
+		return
+	}
+	r.bstate[m.id] = key
+	mut name := 'broker #${m.id}'
+	for b in cfg.brokers {
+		if b.id == m.id {
+			name = b.name
+			break
+		}
+	}
+	r.event('broker', name, if m.err_msg.len > 0 { '${m.state}: ${m.err_msg}' } else { m.state })
+}
+
+fn mqtt_packet_type_name(t int) string {
+	return match t {
+		0 { 'REQ' }
+		1 { 'RESPONSE' }
+		2 { 'TXT_MSG' }
+		3 { 'ACK' }
+		4 { 'ADVERT' }
+		5 { 'GRP_TXT' }
+		6 { 'GRP_DATA' }
+		7 { 'ANON_REQ' }
+		8 { 'PATH' }
+		9 { 'TRACE' }
+		10 { 'MULTIPART' }
+		11 { 'CONTROL' }
+		15 { 'RAW_CUSTOM' }
+		else { 'type ${t}' }
+	}
 }
 
 // mqtt_needs_key is true when any enabled broker authenticates with a signed
@@ -145,6 +258,7 @@ fn (mut r MqttRuntime) note(mut store Store, state string) {
 	}
 	r.last_state = state
 	store.mqtt_note('state', state) or {}
+	r.event('daemon', '', state)
 }
 
 fn (mut r MqttRuntime) maybe_load_key(now i64, cfg MqttConfig, mut store Store) {
@@ -155,11 +269,13 @@ fn (mut r MqttRuntime) maybe_load_key(now i64, cfg MqttConfig, mut store Store) 
 	k := r.key_loader() or {
 		r.next_key_try = now + mqtt_key_retry
 		store.mqtt_note('key', 'error: ${err}') or {}
+		r.log(now, 'daemon', '', 'private key not available: ${err}', '')
 		return
 	}
 	if k.len != 128 {
 		r.next_key_try = now + mqtt_key_retry
 		store.mqtt_note('key', 'error: radio returned a malformed key') or {}
+		r.log(now, 'daemon', '', 'radio returned a malformed private key', '')
 		return
 	}
 	r.mu.lock()
@@ -167,6 +283,7 @@ fn (mut r MqttRuntime) maybe_load_key(now i64, cfg MqttConfig, mut store Store) 
 	r.sent_rev = -1 // re-send config so the publisher gets the key
 	r.mu.unlock()
 	store.mqtt_note('key', 'ok') or {}
+	r.log(now, 'daemon', '', 'private key read from the radio (kept in memory only)', '')
 }
 
 fn (mut r MqttRuntime) shutdown() {
@@ -181,6 +298,12 @@ fn (mut r MqttRuntime) shutdown() {
 // tick reconciles the running publisher with the stored configuration.
 // Call about once a second from the daemon loop.
 pub fn (mut r MqttRuntime) tick(now i64, mut store Store) {
+	r.now = now
+	r.tick_inner(now, mut store)
+	r.flush_log(now, mut store)
+}
+
+fn (mut r MqttRuntime) tick_inner(now i64, mut store Store) {
 	cfg := load_mqtt_config(mut store)
 	// Fetch the signing key BEFORE taking the lock: the radio's reply arrives
 	// on the same dispatcher thread that calls on_packet(), so holding the lock
@@ -213,6 +336,7 @@ pub fn (mut r MqttRuntime) tick(now i64, mut store Store) {
 	if r.pipes.len > 0 && !r.pipes[0].alive() {
 		r.pipes.clear()
 		r.next_start = now + mqtt_restart_backoff
+		r.event('daemon', '', 'publisher exited')
 	}
 	if r.pipes.len == 0 {
 		if now < r.next_start {
@@ -226,16 +350,23 @@ pub fn (mut r MqttRuntime) tick(now i64, mut store Store) {
 		}
 		r.pipes << pipe
 		r.sent_rev = -1
+		r.event('daemon', '', 'publisher started')
 	}
 	rev := store.mqtt_rev()
 	if rev != r.sent_rev {
 		if r.pipes[0].write_line(mqtt_config_line(cfg, r.ident, r.key)) {
 			r.sent_rev = rev
+			mut names := []string{}
+			for b in cfg.brokers {
+				names << b.name
+			}
+			r.event('daemon', '', 'configuration sent: IATA ${cfg.iata}, ${cfg.brokers.len} broker(s): ${names.join(', ')}')
 		}
 	}
 	for _ in 0 .. 200 { // bounded: never let a chatty publisher stall the loop
 		line := r.pipes[0].read_status() or { break }
 		apply_status(mut store, line)
+		r.log_status(line, cfg)
 	}
 	r.note(mut store, 'running: ${cfg.brokers.len} broker(s)')
 }
@@ -254,8 +385,14 @@ pub fn (mut r MqttRuntime) on_packet(ts i64, snr f64, rssi f64, raw []u8) {
 	mut cmd := map[string]string{}
 	cmd['cmd'] = 'packet'
 	cmd['payload'] = pj
-	if !r.pipes[0].write_line(json2.encode(cmd, escape_unicode: true)) {
+	queued := r.pipes[0].write_line(json2.encode(cmd, escape_unicode: true))
+	if !queued {
 		r.dropped++
+	}
+	if info := parse_packet(raw) {
+		route := if info.route == 'D' { 'direct' } else { 'flood' }
+		r.log(ts, 'packet', '', '${if queued { '' } else { 'NOT SENT (queue full) ' }}${mqtt_packet_type_name(info.packet_type)} ${route} ${info.raw_len} B  SNR ${int(snr)}  RSSI ${int(rssi)}  ${info.hash}',
+			pj)
 	}
 }
 

@@ -117,4 +117,5 @@ fn test_orm_schema_matches_webui_contract() {
 	assert table_cols(path, 'mqtt_settings') == mqttcfg.settings_columns
 	assert table_cols(path, 'mqtt_brokers') == mqttcfg.broker_columns
 	assert table_cols(path, 'mqtt_status') == mqttcfg.status_columns
+	assert table_cols(path, 'mqtt_log') == mqttcfg.log_columns
 }

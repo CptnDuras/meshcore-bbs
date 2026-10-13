@@ -131,6 +131,9 @@ mut:
 	set_mqtt_status(broker_id int, state string, last_error string, published i64) !
 	list_mqtt_status() []MqttStatus
 	delete_mqtt_status(broker_id int) !
+	add_mqtt_log(entries []MqttLog) !
+	list_mqtt_log(kind string, limit int) []MqttLog
+	trim_mqtt_log(keep_packets int, keep_other int) !
 }
 
 // new_store selects a backend from a config string.
@@ -184,6 +187,7 @@ pub fn (mut s SqliteStore) migrate() ! {
 		create table MqttSetting
 		create table MqttBroker
 		create table MqttStatus
+		create table MqttLog
 	}!
 	// Lightweight column migrations for tables that predate a new field.
 	// V's ORM `create table` is CREATE TABLE IF NOT EXISTS and never adds new
@@ -1278,4 +1282,41 @@ pub fn (mut s SqliteStore) delete_mqtt_status(broker_id int) ! {
 	sql s.db {
 		delete from MqttStatus where broker_id == broker_id
 	}!
+}
+
+// --- MQTT activity log ---
+
+pub fn (mut s SqliteStore) add_mqtt_log(entries []MqttLog) ! {
+	for e in entries {
+		row := e
+		sql s.db {
+			insert row into MqttLog
+		}!
+	}
+}
+
+// list_mqtt_log returns the newest entries first. kind '' = everything,
+// 'packet' = packets only, 'other' = everything except packets.
+pub fn (mut s SqliteStore) list_mqtt_log(kind string, limit int) []MqttLog {
+	if kind == 'packet' {
+		return sql s.db {
+			select from MqttLog where kind == 'packet' order by id desc limit limit
+		} or { []MqttLog{} }
+	}
+	if kind == 'other' {
+		return sql s.db {
+			select from MqttLog where kind != 'packet' order by id desc limit limit
+		} or { []MqttLog{} }
+	}
+	return sql s.db {
+		select from MqttLog order by id desc limit limit
+	} or { []MqttLog{} }
+}
+
+// trim_mqtt_log keeps the newest keep_packets packet rows and keep_other rows
+// of every other kind, so a busy mesh cannot push the events out.
+pub fn (mut s SqliteStore) trim_mqtt_log(keep_packets int, keep_other int) ! {
+	// the limits are ints, so formatting them into the SQL cannot inject anything
+	s.db.exec("DELETE FROM mqtt_log WHERE kind = 'packet' AND id NOT IN (SELECT id FROM mqtt_log WHERE kind = 'packet' ORDER BY id DESC LIMIT ${keep_packets})")!
+	s.db.exec("DELETE FROM mqtt_log WHERE kind != 'packet' AND id NOT IN (SELECT id FROM mqtt_log WHERE kind != 'packet' ORDER BY id DESC LIMIT ${keep_other})")!
 }

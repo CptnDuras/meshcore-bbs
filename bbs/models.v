@@ -333,3 +333,18 @@ pub mut:
 	published  i64
 	updated    i64
 }
+
+// MqttLog is the observer's activity log, shown on the web UI's MQTT log page.
+//   kind: packet (a heard packet queued for the brokers) | broker (a broker's
+//         state changed) | daemon (observer state, key, config, drops)
+// The log is trimmed by the daemon (see mqtt_log_keep_*), never by the UI.
+@[table: 'mqtt_log']
+pub struct MqttLog {
+pub mut:
+	id      int    @[primary; sql: serial]
+	ts      i64
+	kind    string
+	broker  string // broker name, '' when not about one broker
+	summary string
+	detail  string // packets: the exact JSON published
+}

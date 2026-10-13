@@ -154,3 +154,4 @@ pub const settings_columns = ['id', 'key', 'val']
 pub const broker_columns = ['id', 'name', 'enabled', 'host', 'port', 'transport', 'path', 'auth',
 	'username', 'password', 'audience', 'created']
 pub const status_columns = ['id', 'broker_id', 'state', 'last_error', 'published', 'updated']
+pub const log_columns = ['id', 'ts', 'kind', 'broker', 'summary', 'detail']

@@ -143,7 +143,7 @@ fn test_presets_are_valid_and_known() {
 
 fn test_observer_packet_json() {
 	raw := [u8(0x09), 0x02, 0xAA, 0xBB, 0x01, 0x02, 0x03, 0x04, 0x05]
-	s := observer_packet_json('MESHBBS', 'ABCD', 1760000000, 5.5, -97.0, raw) or { panic(err) }
+	s := observer_packet_json('MESHBBS', 'ABCD', 1760000000, 5.5, -97.0, raw) or { panic('observer_packet_json returned none') }
 	m := json2.decode[map[string]string](s) or { panic('payload must be a flat string map: ${err}') }
 	assert m['origin'] == 'MESHBBS'
 	assert m['origin_id'] == 'ABCD'

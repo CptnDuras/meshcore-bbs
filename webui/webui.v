@@ -172,6 +172,22 @@ pub fn (app &App) mqtt(mut ctx Context) veb.Result {
 	return $veb.html('templates/mqtt.html')
 }
 
+@['/mqtt/log']
+pub fn (app &App) mqtt_log(mut ctx Context) veb.Result {
+	mut db := app.db() or { return ctx.text('db error') }
+	defer { db.close() or {} }
+	page := mqtt_log_load(mut db, ctx.query['kind'] or { '' }, ctx.query['q'] or { '' }, mqtt_log_limit(ctx.query['limit'] or { '' }))
+	return $veb.html('templates/mqtt_log.html')
+}
+
+@['/mqtt/log.txt']
+pub fn (app &App) mqtt_log_txt(mut ctx Context) veb.Result {
+	mut db := app.db() or { return ctx.text('db error') }
+	defer { db.close() or {} }
+	page := mqtt_log_load(mut db, ctx.query['kind'] or { '' }, ctx.query['q'] or { '' }, mqtt_log_limit(ctx.query['limit'] or { '' }))
+	return ctx.text(mqtt_log_text(page.rows))
+}
+
 fn mqtt_back(mut ctx Context, err string) veb.Result {
 	if err.len > 0 {
 		return ctx.redirect('/mqtt?err=' + urllib.query_escape(err), typ: .found)
