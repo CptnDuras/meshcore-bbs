@@ -1,3 +1,15 @@
-	</main>
+	</div></main>
+	<footer class="site-footer"><div class="wrap"><p>meshbbs admin &middot; MESHBBS on the Buffalo, Wyoming mesh &middot; reachable over the tailnet only.</p></div></footer>
+	<script>
+		// highlight the current section in the nav
+		(function(){
+			var p = location.pathname, best = null;
+			document.querySelectorAll('nav a').forEach(function(a){
+				var h = a.getAttribute('href');
+				if (h === p || (h !== '/' && p.indexOf(h) === 0)) best = a;
+			});
+			if (best) best.setAttribute('aria-current', 'page');
+		})();
+	</script>
 </body>
 </html>

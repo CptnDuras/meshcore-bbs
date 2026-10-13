@@ -3,108 +3,137 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="color-scheme" content="light dark">
+	<meta name="theme-color" content="#1d4e5f">
 	<title>meshbbs admin</title>
+	<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d4e5f'/%3E%3Cpath d='M8 48 24 26l8 10 8-14 16 26z' fill='%23e8a35d'/%3E%3Ccircle cx='32' cy='14' r='4' fill='%23fff'/%3E%3Cpath d='M22 10a14 14 0 0 1 20 0M17 5a21 21 0 0 1 30 0' fill='none' stroke='%23fff' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
 	<style>
+		/* Palette shared with xerokuhl.com. The older variable names (--panel, --border, ...) are kept so the page templates need no changes. */
 		:root{
-			--bg:#0f172a; --panel:#1e293b; --panel2:#243449; --border:#334155;
-			--text:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; --accent2:#818cf8;
-			--good:#34d399; --bad:#f87171; --radius:10px;
+			color-scheme:light dark;
+			--bg:#f7f5f0; --surface:#ffffff; --ink:#1f2933; --muted:#5b6671; --line:#d9d4c8;
+			--brand:#1d4e5f; --brand-ink:#ffffff; --accent:#b4571b; --link:#17607a;
+			--sky-a:#1d4e5f; --sky-b:#e8a35d;
+			--ridge-far:#3b6b78; --ridge-mid:#274f5c; --ridge-near:#16343e;
+			--good:#2f7d4f; --bad:#b3372f; --radius:12px;
+			--panel:var(--surface); --panel2:var(--bg); --border:var(--line); --text:var(--ink); --accent2:var(--link);
+			--on-bg:rgba(47,125,79,.14); --off-bg:rgba(179,55,47,.12); --hover:rgba(29,78,95,.06);
+		}
+		@media (prefers-color-scheme: dark){
+			:root{
+				--bg:#11181c; --surface:#182126; --ink:#e8ecee; --muted:#9aa7ae; --line:#2b383f;
+				--brand:#5fb2c9; --brand-ink:#0b1519; --accent:#f0a15c; --link:#7cc6dc;
+				--sky-a:#0f2630; --sky-b:#7a4a2a;
+				--ridge-far:#24424d; --ridge-mid:#182f38; --ridge-near:#0c1a20;
+				--good:#5fd196; --bad:#f0827a;
+				--on-bg:rgba(95,209,150,.15); --off-bg:rgba(240,130,122,.14); --hover:rgba(124,198,220,.07);
+			}
 		}
 		*{box-sizing:border-box}
+		html{scroll-behavior:smooth}
 		body{
-			margin:0; background:var(--bg); color:var(--text);
-			font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-			line-height:1.5;
+			margin:0; background:var(--bg); color:var(--ink);
+			font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 		}
-		header.top{
-			display:flex; align-items:center; gap:.75rem;
-			padding:1rem 1.5rem; background:linear-gradient(90deg,#0b1220,#1e293b);
-			border-bottom:1px solid var(--border); position:sticky; top:0; z-index:10;
-		}
-		header.top .logo{font-weight:700; font-size:1.15rem; letter-spacing:.5px}
-		header.top .logo .dot{color:var(--accent)}
-		header.top .badge{
-			margin-left:auto; font-size:.75rem; color:var(--muted);
-			border:1px solid var(--border); border-radius:999px; padding:.15rem .6rem;
-		}
-		nav{
-			display:flex; flex-wrap:wrap; gap:.25rem; padding:.5rem 1rem;
-			background:var(--panel); border-bottom:1px solid var(--border);
-			position:sticky; top:57px; z-index:9;
-		}
-		nav a{
-			color:var(--muted); text-decoration:none; padding:.45rem .8rem;
-			border-radius:8px; font-size:.9rem; font-weight:500;
-		}
-		nav a:hover{background:var(--panel2); color:var(--text)}
-		main{padding:1.5rem; max-width:1100px; margin:0 auto}
-		h2{margin:.2rem 0 1rem; font-size:1.35rem}
-		h3,legend{color:var(--text)}
-		a{color:var(--accent)}
+		a{color:var(--link); text-underline-offset:.15em}
+		a:hover{text-decoration-thickness:2px}
+		a:focus-visible,button:focus-visible{outline:3px solid var(--accent); outline-offset:2px}
+		.wrap{max-width:68rem; margin:0 auto; padding:0 1rem}
+
+		/* header + nav */
+		.site-header{background:var(--surface); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10}
+		.site-header .wrap{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.25rem 1.5rem; padding-top:.6rem; padding-bottom:.6rem}
+		.brand{display:flex; align-items:center; gap:.6rem; font-weight:700; font-size:1.15rem; color:var(--ink); text-decoration:none; letter-spacing:.01em}
+		.brand svg{width:2rem; height:2rem; color:var(--accent)}
+		.brand small{font-weight:400; color:var(--muted); font-size:.85rem}
+		nav ul{list-style:none; display:flex; flex-wrap:wrap; gap:.1rem .3rem; margin:0; padding:0}
+		nav a{display:block; padding:.4rem .7rem; border-radius:6px; color:var(--ink); text-decoration:none; font-size:.95rem}
+		nav a:hover{background:var(--bg)}
+		nav a[aria-current="page"]{background:var(--brand); color:var(--brand-ink)}
+
+		/* mountain band under the header */
+		.band{position:relative; overflow:hidden; height:4.2rem; background:linear-gradient(180deg,var(--sky-a) 0%,var(--sky-a) 45%,var(--sky-b) 100%)}
+		.band .ridge{position:absolute; left:0; right:0; bottom:-1px; width:100%; height:100%; display:block}
+		.ridge .far{fill:var(--ridge-far)} .ridge .mid{fill:var(--ridge-mid)} .ridge .near{fill:var(--ridge-near)}
+
+		main{padding:1.6rem 0 3rem}
+		h2{margin:.2rem 0 1rem; font-size:1.6rem; line-height:1.25}
+		h3,legend{color:var(--ink)}
 		.muted,small{color:var(--muted)}
+		code{background:var(--surface); border:1px solid var(--line); padding:.05em .35em; border-radius:4px; font-size:.92em}
 
 		/* stat cards */
 		.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:1rem}
-		.card{
-			background:var(--panel); border:1px solid var(--border);
-			border-radius:var(--radius); padding:1.1rem 1.2rem;
-		}
-		.card .num{font-size:2rem; font-weight:700; color:#fff}
+		.card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:1.1rem 1.2rem}
+		a.card:hover{border-color:var(--brand)}
+		.card .num{font-size:2rem; font-weight:700; color:var(--brand)}
 		.card .lbl{color:var(--muted); font-size:.85rem; margin-top:.15rem}
 
 		/* tables */
 		table{
 			width:100%; border-collapse:separate; border-spacing:0;
-			background:var(--panel); border:1px solid var(--border);
-			border-radius:var(--radius); overflow:hidden; margin-top:.5rem;
+			background:var(--surface); border:1px solid var(--line);
+			border-radius:8px; overflow:hidden; margin-top:.5rem;
 		}
-		th,td{padding:.6rem .8rem; text-align:left; font-size:.9rem; border-bottom:1px solid var(--border)}
-		th{background:var(--panel2); color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.03em; font-size:.72rem}
+		th,td{padding:.55rem .8rem; text-align:left; font-size:.9rem; border-bottom:1px solid var(--line); vertical-align:top}
+		th{background:var(--bg); color:var(--muted); font-weight:600; font-size:.85rem}
 		tr:last-child td{border-bottom:none}
-		tbody tr:hover td, table tr:hover td{background:rgba(56,189,248,.05)}
-		.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.82rem; color:var(--accent2)}
+		tbody tr:hover td, table tr:hover td{background:var(--hover)}
+		.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.82rem; color:var(--link)}
 
 		/* forms + buttons */
 		button{
-			background:var(--accent); color:#04263a; border:none; border-radius:8px;
-			padding:.4rem .8rem; font-weight:600; font-size:.85rem; cursor:pointer;
+			background:var(--accent); color:#fff; border:2px solid transparent; border-radius:8px;
+			padding:.4rem .85rem; font-weight:600; font-size:.85rem; cursor:pointer;
 		}
 		button:hover{filter:brightness(1.08)}
-		button.ghost{background:var(--panel2); color:var(--text); border:1px solid var(--border)}
+		button.ghost{background:var(--surface); color:var(--ink); border:1px solid var(--line)}
 		button.danger{background:transparent; color:var(--bad); border:1px solid var(--bad)}
-		input,select{
-			background:var(--bg); color:var(--text); border:1px solid var(--border);
-			border-radius:8px; padding:.4rem .55rem; font-size:.9rem;
+		input,select,textarea{
+			background:var(--surface); color:var(--ink); border:1px solid var(--line);
+			border-radius:8px; padding:.4rem .55rem; font-size:.9rem; font-family:inherit;
 		}
-		input:focus,select:focus{outline:none; border-color:var(--accent)}
+		input:focus,select:focus,textarea:focus{outline:none; border-color:var(--brand); box-shadow:0 0 0 2px var(--hover)}
 		label{display:inline-block; margin:.25rem .6rem .25rem 0; color:var(--muted); font-size:.9rem}
-		fieldset{
-			margin-top:1.5rem; border:1px solid var(--border); border-radius:var(--radius);
-			padding:1rem 1.2rem; background:var(--panel);
-		}
+		fieldset{margin-top:1.5rem; border:1px solid var(--line); border-radius:var(--radius); padding:1rem 1.2rem; background:var(--surface)}
 		legend{padding:0 .5rem; font-weight:600}
 		.pill{font-size:.75rem; padding:.12rem .55rem; border-radius:999px; font-weight:600}
-		.pill.on{background:rgba(52,211,153,.15); color:var(--good)}
-		.pill.off{background:rgba(248,113,113,.12); color:var(--bad)}
+		.pill.on{background:var(--on-bg); color:var(--good)}
+		.pill.off{background:var(--off-bg); color:var(--bad)}
 		.actions form{display:inline}
 		.actions button{margin-right:.25rem}
+
+		/* footer */
+		.site-footer{border-top:1px solid var(--line); background:var(--surface); color:var(--muted); font-size:.92rem; padding:1.4rem 0}
+		.site-footer p{margin:0}
+
+		@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
 	</style>
 </head>
 <body>
-	<header class="top">
-		<span class="logo">mesh<span class="dot">•</span>bbs <span style="color:var(--muted);font-weight:400">admin</span></span>
-		<span class="badge">MESHBBS · tailnet</span>
-	</header>
-	<nav>
-		<a href="/">Dashboard</a>
-		<a href="/nodes">Nodes</a>
-		<a href="/users">Users</a>
-		<a href="/interactions">Interactions</a>
-		<a href="/messages">Messages</a>
-		<a href="/macros">Macros</a>
-		<a href="/traffic">Traffic</a>
-		<a href="/schedules">Schedules</a>
-		<a href="/broadcast">Broadcast</a>
-		<a href="/mqtt">MQTT</a>
-	</nav>
-	<main>
+	<header class="site-header"><div class="wrap">
+		<a class="brand" href="/">
+			<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M6 50 22 26l9 11 8-15 19 28z" fill="currentColor"/><circle cx="32" cy="12" r="4" fill="currentColor"/><path d="M22 8a14 14 0 0 1 20 0M17 3a21 21 0 0 1 30 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+			<span>meshbbs <small>admin</small></span>
+		</a>
+		<nav aria-label="Main"><ul>
+			<li><a href="/">Dashboard</a></li>
+			<li><a href="/nodes">Nodes</a></li>
+			<li><a href="/users">Users</a></li>
+			<li><a href="/interactions">Interactions</a></li>
+			<li><a href="/messages">Messages</a></li>
+			<li><a href="/macros">Macros</a></li>
+			<li><a href="/traffic">Traffic</a></li>
+			<li><a href="/schedules">Schedules</a></li>
+			<li><a href="/broadcast">Broadcast</a></li>
+			<li><a href="/mqtt">MQTT</a></li>
+		</ul></nav>
+	</div></header>
+	<div class="band" aria-hidden="true">
+		<svg class="ridge" viewBox="0 0 1200 160" preserveAspectRatio="none">
+			<path class="far" d="M0 100 90 60 170 92 260 40 340 84 450 30 540 80 640 50 740 96 850 44 960 90 1070 56 1200 98V160H0z"/>
+			<path class="mid" d="M0 120 110 84 200 112 310 70 420 116 520 90 640 124 760 86 880 120 1000 92 1100 118 1200 100V160H0z"/>
+			<path class="near" d="M0 142 130 120 250 140 380 118 520 142 660 124 800 144 940 122 1080 142 1200 126V160H0z"/>
+		</svg>
+	</div>
+	<main><div class="wrap">
