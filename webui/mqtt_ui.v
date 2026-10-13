@@ -6,6 +6,7 @@ module main
 
 import db.sqlite
 import mqttcfg
+import net.urllib
 import time
 
 struct MqttBrokerView {
@@ -226,6 +227,7 @@ struct MqttLogPage {
 	available bool
 	kind      string // all | packet | other
 	q         string
+	q_enc     string // q, URL-escaped for the plain-text link
 	limit     int
 	rows      []MqttLogView
 	packets   int // totals kept in the table, whatever the filter
@@ -286,6 +288,7 @@ fn mqtt_log_load(mut db sqlite.DB, kind string, q string, limit int) MqttLogPage
 		available: true
 		kind: k
 		q: q
+		q_enc: urllib.query_escape(q)
 		limit: l
 		rows: out
 		packets: count("kind = 'packet'")

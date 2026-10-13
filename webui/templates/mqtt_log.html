@@ -28,7 +28,7 @@ Packets are only logged while the observer is running. The newest 5000 packets a
 		</select>
 	</label>
 	<button type="submit">Apply</button>
-	<a href="/mqtt/log.txt?kind=@{page.kind}&amp;q=@{urllib.query_escape(page.q)}&amp;limit=@{page.limit}">plain text</a>
+	<a href="/mqtt/log.txt?kind=@{page.kind}&amp;q=@{page.q_enc}&amp;limit=@{page.limit}">plain text</a>
 </form>
 <small>@{page.rows.len} shown &middot; @{page.packets} packets and @{page.events} events stored. Reload to refresh.</small>
 
