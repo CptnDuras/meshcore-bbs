@@ -31,6 +31,7 @@ mut:
 	// sessions
 	load_session(pubkey_prefix string) ?Session
 	save_session(s Session) !
+	list_sessions() []Session
 	// read pointers / navigation
 	get_last_read(user_id int, board_id int) int
 	set_last_read(user_id int, board_id int, last_msg int) !
@@ -114,6 +115,9 @@ mut:
 	set_pref(owner string, key string, val string) !
 	get_pref(owner string, key string) ?string
 	list_prefs(owner string) []UserPref
+	// weather alerts already announced (deduped by event + counties)
+	alert_key_touch(key string, now i64) bool
+	alert_keys_prune(before i64) !
 	// proactive mail-notice guard
 	get_mail_notice(handle string) ?MailNotice
 	record_mail_notice(handle string, count int, now i64) !
@@ -184,6 +188,7 @@ pub fn (mut s SqliteStore) migrate() ! {
 		create table UserMacro
 		create table UserPref
 		create table MailNotice
+		create table WxAlertSent
 		create table MqttSetting
 		create table MqttBroker
 		create table MqttStatus
@@ -1319,4 +1324,42 @@ pub fn (mut s SqliteStore) trim_mqtt_log(keep_packets int, keep_other int) ! {
 	// the limits are ints, so formatting them into the SQL cannot inject anything
 	s.db.exec("DELETE FROM mqtt_log WHERE kind = 'packet' AND id NOT IN (SELECT id FROM mqtt_log WHERE kind = 'packet' ORDER BY id DESC LIMIT ${keep_packets})")!
 	s.db.exec("DELETE FROM mqtt_log WHERE kind != 'packet' AND id NOT IN (SELECT id FROM mqtt_log WHERE kind != 'packet' ORDER BY id DESC LIMIT ${keep_other})")!
+}
+
+// alert_key_touch records that an alert key is still in the feed. Returns true
+// if it had already been announced (so the caller skips it), false if it is new
+// (it is recorded as announced now).
+pub fn (mut s SqliteStore) alert_key_touch(key string, now i64) bool {
+	rows := sql s.db {
+		select from WxAlertSent where key == key limit 1
+	} or { []WxAlertSent{} }
+	if rows.len > 0 {
+		id := rows[0].id
+		sql s.db {
+			update WxAlertSent set last_seen = now where id == id
+		} or {}
+		return true
+	}
+	row := WxAlertSent{
+		key:       key
+		sent:      now
+		last_seen: now
+	}
+	sql s.db {
+		insert row into WxAlertSent
+	} or {}
+	return false
+}
+
+// alert_keys_prune forgets alert keys not seen in the feed since `before`.
+pub fn (mut s SqliteStore) alert_keys_prune(before i64) ! {
+	sql s.db {
+		delete from WxAlertSent where last_seen < before
+	}!
+}
+
+pub fn (mut s SqliteStore) list_sessions() []Session {
+	return sql s.db {
+		select from Session
+	} or { []Session{} }
 }

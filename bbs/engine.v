@@ -160,6 +160,9 @@ fn (mut e Engine) dispatch(mut sess Session, line string) string {
 			days := if args.trim_space().len > 0 { args.trim_space().int() } else { forecast_default_days }
 			return fetch_forecast(days)
 		}
+		'ALERTS', 'ALERT' {
+			return fetch_alerts_report()
+		}
 		'SPACEWX', 'SW', 'SPACE' {
 			return fetch_spacewx()
 		}
@@ -320,7 +323,7 @@ const known_commands = ['HELP', 'MENU', 'WHO', 'WX', 'FORECAST', 'SPACEWX', 'NEW
 	'READ', 'POST', 'NEW', 'CLAIM', 'SETPASS', 'LOGIN', 'LOGOUT', 'KNOWN', 'CHANGE', 'GOTO',
 	'ENTER', 'MAIL', 'MAILBOX', 'CHECKMAIL', 'THREAD', 'ONELINER', 'BULLETIN', 'POLL', 'VOTE', 'RESULTS', 'PROFILE',
 	'SETBIO', 'CHANNELS', 'CHANADD', 'STATS', 'FORTUNE', 'ROLL', '8BALL', 'JOKE', 'CONFIG',
-	'TELL', 'CALLERS']
+	'TELL', 'CALLERS', 'ALERTS']
 
 // suggest_command returns the closest known command to `cmd` if one is within a
 // small edit distance (a simple typo helper), else none.
@@ -418,7 +421,7 @@ fn (mut e Engine) help(sess Session) string {
 	mut b := 'Commands (send one letter/word):\n'
 	b += 'H help  MENU  K rooms  C <room>  N new msgs  G goto-unread\n'
 	b += 'R <room> read  L list  W who  WX weather  SW spacewx  NEWS\n'
-	b += 'FORECAST [days]\n'
+	b += 'FORECAST [days]  ALERTS (NWS Sheridan/Johnson Co)\n'
 	b += 'O oneliner [text]  B bulletins  CALLERS  PROFILE <u>\n'
 	b += 'POLL [id]  VOTE <id> <n>  RESULTS <id>\n'
 	b += 'FORTUNE  ROLL <NdM>  8BALL <q>  JOKE\n'

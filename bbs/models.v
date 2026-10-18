@@ -221,6 +221,17 @@ pub mut:
 	last_count    int
 }
 
+// WxAlertSent remembers an NWS alert already announced (key = event + counties)
+// and when it was last seen in the feed, so it is announced once per episode.
+@[table: 'wx_alerts_sent']
+pub struct WxAlertSent {
+pub mut:
+	id        int    @[primary; sql: serial]
+	key       string @[unique]
+	sent      i64
+	last_seen i64
+}
+
 // SentHeadline records a news headline already broadcast, so news aging can
 // skip it next time (each send surfaces fresh items).
 @[table: 'sent_headlines']

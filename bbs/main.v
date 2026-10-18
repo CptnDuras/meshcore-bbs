@@ -223,12 +223,19 @@ fn main() {
 
 	// Local timezone offset (secs) so daily schedules fire at local wall-clock time.
 	tz_offset := i64(time.offset())
+	mut last_alert_poll := i64(0)
 
 	for {
 		now := time.now().unix()
 
 		// MQTT observer: reconcile the publisher with the web-UI configuration.
 		mqtt.tick(now, mut engine.store)
+
+		// NWS emergency alerts for Sheridan / Johnson county: channel + DMs.
+		if now - last_alert_poll >= alerts_poll_secs {
+			last_alert_poll = now
+			engine.poll_alerts(now)
+		}
 
 		// Refresh the node-name map from the radio's contact list every 15 min.
 		if now - last_contact_sync >= contact_sync_interval {
