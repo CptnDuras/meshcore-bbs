@@ -24,11 +24,11 @@ pub enum JobKind {
 // an empty string to skip this run, e.g. when a data source is unavailable).
 pub struct Job {
 pub mut:
-	name         string
-	kind         JobKind
-	interval_secs i64    // for JobKind.interval
-	daily_minute  int    // for JobKind.daily: minutes past midnight (0..1439)
-	last_run      i64    // epoch secs of last run (0 = never)
+	name          string
+	kind          JobKind
+	interval_secs i64 // for JobKind.interval
+	daily_minute  int // for JobKind.daily: minutes past midnight (0..1439)
+	last_run      i64 // epoch secs of last run (0 = never)
 	produce       fn () string @[required]
 }
 

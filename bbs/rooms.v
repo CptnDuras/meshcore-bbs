@@ -20,7 +20,7 @@ fn (mut e Engine) known_rooms(sess Session) string {
 		}
 		b += '${marker} ${bd.name}\n'
 	}
-	b += "C <room> to change, G for next unread."
+	b += 'C <room> to change, G for next unread.'
 	return b
 }
 

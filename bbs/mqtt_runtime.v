@@ -25,7 +25,7 @@ pub interface MqttPipe {
 mut:
 	alive() bool
 	write_line(s string) bool // non-blocking; false = dropped
-	read_status() ?string // next status line the publisher reported, if any
+	read_status() ?string     // next status line the publisher reported, if any
 	stop()
 }
 
@@ -80,13 +80,13 @@ pub mut:
 	// activity log: entries are queued here (cheap, from any thread) and written
 	// to the DB by tick(). It has its own lock so logging is safe wherever the
 	// main lock is or is not held.
-	lmu          &sync.Mutex = sync.new_mutex()
-	log_q        []MqttLog
-	log_over     int // entries that did not fit the queue since the last flush
-	log_dropped  int // r.dropped as of the last flush
-	bstate       map[int]string // last logged state of each broker
-	next_trim    i64
-	now          i64 // time of the latest tick, used to stamp events
+	lmu         &sync.Mutex = sync.new_mutex()
+	log_q       []MqttLog
+	log_over    int            // entries that did not fit the queue since the last flush
+	log_dropped int            // r.dropped as of the last flush
+	bstate      map[int]string // last logged state of each broker
+	next_trim   i64
+	now         i64 // time of the latest tick, used to stamp events
 }
 
 // log queues one activity-log entry. Never blocks on the database.
@@ -100,11 +100,11 @@ fn (mut r MqttRuntime) log(ts i64, kind string, broker string, summary string, d
 		return
 	}
 	r.log_q << MqttLog{
-		ts: ts
-		kind: kind
-		broker: broker
+		ts:      ts
+		kind:    kind
+		broker:  broker
 		summary: summary
-		detail: detail
+		detail:  detail
 	}
 }
 
@@ -125,16 +125,16 @@ fn (mut r MqttRuntime) flush_log(now i64, mut store Store) {
 	r.mu.unlock()
 	if dropped > r.log_dropped {
 		batch << MqttLog{
-			ts: now
-			kind: 'daemon'
+			ts:      now
+			kind:    'daemon'
 			summary: '${dropped - r.log_dropped} packet(s) dropped: the publisher is not keeping up'
 		}
 		r.log_dropped = dropped
 	}
 	if over > 0 {
 		batch << MqttLog{
-			ts: now
-			kind: 'daemon'
+			ts:      now
+			kind:    'daemon'
 			summary: '${over} log entries were not recorded (log queue was full)'
 		}
 	}
@@ -203,27 +203,27 @@ fn mqtt_config_line(cfg MqttConfig, ident MqttIdentity, key string) string {
 	mut brokers := []MqttCfgBroker{}
 	for b in cfg.brokers {
 		brokers << MqttCfgBroker{
-			id: b.id
-			name: b.name
-			host: b.host
-			port: b.port
+			id:        b.id
+			name:      b.name
+			host:      b.host
+			port:      b.port
 			transport: b.transport
-			path: b.path
-			auth: b.auth
-			audience: b.audience
-			username: b.username
-			password: b.password
+			path:      b.path
+			auth:      b.auth
+			audience:  b.audience
+			username:  b.username
+			password:  b.password
 		}
 	}
 	return json2.encode(MqttCfgCmd{
-		cmd: 'config'
-		iata: cfg.iata
-		origin: ident.origin
+		cmd:       'config'
+		iata:      cfg.iata
+		origin:    ident.origin
 		origin_id: ident.origin_id
-		model: ident.model
-		fw: ident.fw
-		key: if mqtt_needs_key(cfg) { key } else { '' }
-		brokers: brokers
+		model:     ident.model
+		fw:        ident.fw
+		key:       if mqtt_needs_key(cfg) { key } else { '' }
+		brokers:   brokers
 	},
 		escape_unicode: true
 	)

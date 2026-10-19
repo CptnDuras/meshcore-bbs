@@ -90,7 +90,7 @@ pub fn (mut f FakeConn) write_all(data []u8) ! {
 					off: 10
 				}
 				mut c := FakeConnect{
-					flags: p.body[7]
+					flags:     p.body[7]
 					keepalive: (int(p.body[8]) << 8) | int(p.body[9])
 				}
 				c.client_id = fake_str(p.body, mut off)
@@ -115,10 +115,10 @@ pub fn (mut f FakeConn) write_all(data []u8) ! {
 			3 {
 				n := (int(p.body[0]) << 8) | int(p.body[1])
 				f.pkts << FakePkt{
-					kind: 'publish'
-					topic: p.body[2..2 + n].bytestr()
+					kind:    'publish'
+					topic:   p.body[2..2 + n].bytestr()
 					payload: p.body[2 + n..].bytestr()
-					retain: p.flags & 1 != 0
+					retain:  p.flags & 1 != 0
 				}
 			}
 			12 {
@@ -201,7 +201,7 @@ fn (mut n FakeNet) dial(b MqttCfgBroker) !MqttConn {
 	}
 	c := &FakeConn{
 		hostport: hp
-		refuse: n.refuse[hp]
+		refuse:   n.refuse[hp]
 	}
 	n.conns << c
 	return c
@@ -357,47 +357,47 @@ fn new_env() Env {
 		return mqtt_start_worker(spec, dial, sink, now)
 	}, now)
 	return Env{
-		p: p
-		net: fnet
+		p:    p
+		net:  fnet
 		sink: sink
-		clk: clk
+		clk:  clk
 	}
 }
 
 fn wss_broker() MqttCfgBroker {
 	return MqttCfgBroker{
-		id: 1
-		name: 'meshmapper'
-		host: 'mqtt.meshmapper.net'
-		port: 443
+		id:        1
+		name:      'meshmapper'
+		host:      'mqtt.meshmapper.net'
+		port:      443
 		transport: 'wss'
-		path: '/'
-		auth: 'token'
-		audience: 'mqtt.meshmapper.net'
+		path:      '/'
+		auth:      'token'
+		audience:  'mqtt.meshmapper.net'
 	}
 }
 
 fn tcp_broker() MqttCfgBroker {
 	return MqttCfgBroker{
-		id: 2
-		name: 'local'
-		host: '127.0.0.1'
-		port: 1883
+		id:        2
+		name:      'local'
+		host:      '127.0.0.1'
+		port:      1883
 		transport: 'tcp'
-		auth: 'none'
+		auth:      'none'
 	}
 }
 
 fn cfg_cmd(brokers []MqttCfgBroker, key string, iata string) MqttInCmd {
 	return MqttInCmd{
-		cmd: 'config'
-		iata: iata
-		origin: 'MESHBBS'
+		cmd:       'config'
+		iata:      iata
+		origin:    'MESHBBS'
 		origin_id: t_pub
-		model: 'Heltec V3'
-		fw: '1.17.1'
-		key: key
-		brokers: brokers
+		model:     'Heltec V3'
+		fw:        '1.17.1'
+		key:       key
+		brokers:   brokers
 	}
 }
 
@@ -453,7 +453,7 @@ fn test_password_auth() {
 	mut b := tcp_broker()
 	b = MqttCfgBroker{
 		...b
-		auth: 'password'
+		auth:     'password'
 		username: 'u'
 		password: 'pw'
 	}
@@ -693,8 +693,8 @@ fn test_packets_before_config_and_unknown_commands_are_ignored() {
 
 fn test_status_payload_timestamp_and_unknowns() {
 	c := MqttPubCore{
-		iata: 'BYG'
-		origin: 'N'
+		iata:      'BYG'
+		origin:    'N'
 		origin_id: 'AB'
 	}
 	s := c.status_json('online', 1700000000)
@@ -728,11 +728,11 @@ fn test_native_pipe_json_lines_and_status() {
 	mut pipe := new_native_pipe_with(sink_net.dialer(), clk.now_fn())!
 	assert pipe.alive()
 	cfg := json2.encode(MqttCfgCmd{
-		cmd: 'config'
-		iata: 'byg'
-		origin: 'MESHBBS'
+		cmd:       'config'
+		iata:      'byg'
+		origin:    'MESHBBS'
 		origin_id: t_pub
-		brokers: [tcp_broker()]
+		brokers:   [tcp_broker()]
 	},
 		escape_unicode: true
 	)

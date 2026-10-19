@@ -35,21 +35,21 @@ fn it_run(transport string, env string) {
 	}
 	mut pipe := new_native_pipe() or { panic(err) }
 	cfg := json2.encode(MqttCfgCmd{
-		cmd: 'config'
-		iata: 'ITX'
-		origin: 'IT'
+		cmd:       'config'
+		iata:      'ITX'
+		origin:    'IT'
 		origin_id: it_pub
-		model: 'it'
-		fw: '1'
-		brokers: [
+		model:     'it'
+		fw:        '1'
+		brokers:   [
 			MqttCfgBroker{
-				id: 9
-				name: 'it'
-				host: host
-				port: port
+				id:        9
+				name:      'it'
+				host:      host
+				port:      port
 				transport: transport
-				path: path
-				auth: 'none'
+				path:      path
+				auth:      'none'
 			},
 		]
 	},

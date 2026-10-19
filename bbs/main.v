@@ -159,6 +159,12 @@ fn main() {
 	// Overheard channel messages (public traffic) -> log for mesh health.
 	chan_cb := fn [mut engine] (ev meshcore.Event) {
 		engine.log_traffic('chan_msg', ev.payload.pubkey_prefix, ev.payload.snr, int(ev.payload.path_len))
+		// public-channel slash commands (/weather, /forecast, /alerts, /help)
+		cmd := engine.handle_channel_command(int(ev.payload.channel_idx), ev.payload.text,
+			time.now().unix())
+		if cmd.len > 0 {
+			println('[chan-cmd] /${cmd} on channel ${ev.payload.channel_idx}')
+		}
 	}
 	mc.subscribe(.channel_msg_recv, chan_cb)
 

@@ -33,12 +33,12 @@ fn test_mqtt_broker_crud() {
 	mut store := new_store('sqlite::memory:') or { panic(err) }
 	store.migrate() or { panic(err) }
 	b := store.add_mqtt_broker(MqttBroker{
-		name: 'local'
-		host: '127.0.0.1'
-		port: 1883
+		name:      'local'
+		host:      '127.0.0.1'
+		port:      1883
 		transport: 'tcp'
-		auth: 'none'
-		enabled: true
+		auth:      'none'
+		enabled:   true
 	}) or { panic(err) }
 	assert b.id > 0
 	assert store.list_mqtt_brokers().len == 1

@@ -68,38 +68,38 @@ fn mqtt_load(mut db sqlite.DB) MqttPage {
 		}
 	}
 	mut brokers := []MqttBrokerView{}
-	rows := db.exec('SELECT b.id, b.name, b.enabled, b.host, b.port, b.transport, b.path, b.auth, b.username, b.password, b.audience, COALESCE(s.state,\'\'), COALESCE(s.last_error,\'\'), COALESCE(s.published,0), COALESCE(s.updated,0) FROM mqtt_brokers b LEFT JOIN mqtt_status s ON s.broker_id=b.id ORDER BY b.id') or {
+	rows := db.exec("SELECT b.id, b.name, b.enabled, b.host, b.port, b.transport, b.path, b.auth, b.username, b.password, b.audience, COALESCE(s.state,''), COALESCE(s.last_error,''), COALESCE(s.published,0), COALESCE(s.updated,0) FROM mqtt_brokers b LEFT JOIN mqtt_status s ON s.broker_id=b.id ORDER BY b.id") or {
 		[]sqlite.Row{}
 	}
 	for r in rows {
 		v := r.vals
 		brokers << MqttBrokerView{
-			id: v[0].int()
-			name: v[1]
-			enabled: v[2] == '1'
-			host: v[3]
-			port: v[4].int()
-			transport: v[5]
-			path: v[6]
-			auth: v[7]
-			username: v[8]
+			id:           v[0].int()
+			name:         v[1]
+			enabled:      v[2] == '1'
+			host:         v[3]
+			port:         v[4].int()
+			transport:    v[5]
+			path:         v[6]
+			auth:         v[7]
+			username:     v[8]
 			has_password: v[9].len > 0
-			audience: v[10]
-			state: v[11]
-			last_error: v[12]
-			published: v[13].i64()
-			updated: if v[14] == '0' { '' } else { fmt_ts(v[14]) }
+			audience:     v[10]
+			state:        v[11]
+			last_error:   v[12]
+			published:    v[13].i64()
+			updated:      if v[14] == '0' { '' } else { fmt_ts(v[14]) }
 		}
 	}
 	return MqttPage{
 		available: true
-		enabled: mqtt_setting(mut db, 'enabled') == '1'
-		iata: mqtt_setting(mut db, 'iata')
-		state: mqtt_setting(mut db, 'state')
-		key: mqtt_setting(mut db, 'key')
-		rev: mqtt_setting(mut db, 'rev')
-		brokers: brokers
-		presets: mqttcfg.preset_names()
+		enabled:   mqtt_setting(mut db, 'enabled') == '1'
+		iata:      mqtt_setting(mut db, 'iata')
+		state:     mqtt_setting(mut db, 'state')
+		key:       mqtt_setting(mut db, 'key')
+		rev:       mqtt_setting(mut db, 'rev')
+		brokers:   brokers
+		presets:   mqttcfg.preset_names()
 	}
 }
 
@@ -251,8 +251,8 @@ fn mqtt_log_load(mut db sqlite.DB, kind string, q string, limit int) MqttLogPage
 	l := mqtt_log_limit(limit.str())
 	db.exec('SELECT 1 FROM mqtt_log LIMIT 1') or {
 		return MqttLogPage{
-			kind: k
-			q: q
+			kind:  k
+			q:     q
 			limit: l
 		}
 	}
@@ -273,26 +273,26 @@ fn mqtt_log_load(mut db sqlite.DB, kind string, q string, limit int) MqttLogPage
 	mut out := []MqttLogView{}
 	for r in rows {
 		out << MqttLogView{
-			time: fmt_ts(r.vals[0])
-			kind: r.vals[1]
-			broker: r.vals[2]
+			time:    fmt_ts(r.vals[0])
+			kind:    r.vals[1]
+			broker:  r.vals[2]
 			summary: r.vals[3]
-			detail: r.vals[4]
+			detail:  r.vals[4]
 		}
 	}
 	count := fn [mut db] (cond string) int {
-		r := db.exec("SELECT COUNT(*) FROM mqtt_log WHERE ${cond}") or { return 0 }
+		r := db.exec('SELECT COUNT(*) FROM mqtt_log WHERE ${cond}') or { return 0 }
 		return if r.len > 0 { r[0].vals[0].int() } else { 0 }
 	}
 	return MqttLogPage{
 		available: true
-		kind: k
-		q: q
-		q_enc: urllib.query_escape(q)
-		limit: l
-		rows: out
-		packets: count("kind = 'packet'")
-		events: count("kind != 'packet'")
+		kind:      k
+		q:         q
+		q_enc:     urllib.query_escape(q)
+		limit:     l
+		rows:      out
+		packets:   count("kind = 'packet'")
+		events:    count("kind != 'packet'")
 	}
 }
 

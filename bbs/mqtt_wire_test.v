@@ -18,14 +18,14 @@ fn test_connect_minimal() {
 
 fn test_connect_with_will_and_login() {
 	p := mqtt_connect_packet(
-		client_id: 'c'
-		keepalive: 60
-		has_login: true
-		username: 'u'
-		password: 'pw'
-		will_topic: 'a/b'
+		client_id:    'c'
+		keepalive:    60
+		has_login:    true
+		username:     'u'
+		password:     'pw'
+		will_topic:   'a/b'
 		will_payload: 'off'
-		will_retain: true
+		will_retain:  true
 	)
 	// flags: clean(2) + will(4) + will-retain(0x20) + user/pass(0xc0)
 	assert p[0] == 0x10

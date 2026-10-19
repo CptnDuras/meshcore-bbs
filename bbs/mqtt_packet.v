@@ -133,7 +133,7 @@ pub fn mqtt_next_packet(mut buf []u8) !MqttPacket {
 	p := MqttPacket{
 		ptype: buf[0] >> 4
 		flags: buf[0] & 0x0f
-		body: buf[i..i + n].clone()
+		body:  buf[i..i + n].clone()
 	}
 	buf.delete_many(0, i + n)
 	return p

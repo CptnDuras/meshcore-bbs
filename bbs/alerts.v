@@ -218,14 +218,29 @@ fn fetch_alerts_report() string {
 //                        for Warning-level alerts.
 const alert_scope_restricted = 'restricted'
 const alert_scope_public = 'public'
-const alert_default_test_node = 'd2267935c4d5' // XeroKuhl-Portable3
 
 fn (mut e Engine) alerts_public() bool {
 	return (e.store.alert_get('alert_scope') or { alert_scope_restricted }) == alert_scope_public
 }
 
+// alert_test_node is the node restricted scope sends to; set from the web UI.
+// Empty means nobody: restricted scope then sends nothing at all.
 fn (mut e Engine) alert_test_node() string {
-	return e.store.alert_get('alert_test_node') or { alert_default_test_node }
+	return valid_node_prefix(e.store.alert_get('alert_test_node') or { '' })
+}
+
+// valid_node_prefix returns `s` if it is a plausible hex pubkey prefix, else ''.
+fn valid_node_prefix(s string) string {
+	p := s.trim_space().to_lower()
+	if p.len < 4 || p.len > 64 {
+		return ''
+	}
+	for c in p {
+		if !((c >= `0` && c <= `9`) || (c >= `a` && c <= `f`)) {
+			return ''
+		}
+	}
+	return p
 }
 
 // wants_alert_dm: every node that has a session gets DMs unless it opted out.
@@ -239,7 +254,8 @@ fn (mut e Engine) wants_alert_dm(sess Session) bool {
 // Public: every opted-in node with a session.
 fn (mut e Engine) alert_dm_targets() []string {
 	if !e.alerts_public() {
-		return [e.alert_test_node()]
+		node := e.alert_test_node()
+		return if node.len > 0 { [node] } else { []string{} }
 	}
 	mut out := []string{}
 	for sess in e.store.list_sessions() {
@@ -270,7 +286,9 @@ fn (mut e Engine) send_alert_messages(msgs []string, to_channel bool, to_dms boo
 				e.store.enqueue_outbound(target_dm, t, m) or {}
 			}
 		}
-		dest << '${targets.len} DM(s)'
+		if targets.len > 0 {
+			dest << '${targets.len} DM(s)'
+		}
 	}
 	return dest.join(' + ')
 }
@@ -347,39 +365,62 @@ fn alert_test_messages(history_body string) []string {
 	return [alert_test_pre, line, alert_test_post]
 }
 
-// queue_alert_test sends the test. everyone=false: DM to the test node only,
-// whatever the scope. everyone=true: the scope's real audience (restricted ->
-// still just the test node; public -> channel + all opted-in nodes).
-fn (mut e Engine) queue_alert_test(history_body string, everyone bool) string {
+// Test targets (a request's / ALERTTEST's destination):
+//   scope        whatever real alerts would reach right now (restricted -> the
+//                restricted node, public -> channel + opted-in nodes)
+//   chan         the public channel only
+//   node:<hex>   a DM to one node
+const alert_target_scope = 'scope'
+const alert_target_chan = 'chan'
+
+// queue_alert_test queues [pre, alert, post] for `target`. Returns where it
+// went, or an error text starting with "ERR:".
+fn (mut e Engine) queue_alert_test(history_body string, target string) string {
 	msgs := alert_test_messages(history_body)
-	if !everyone {
-		node := e.alert_test_node()
+	t := target.trim_space().to_lower()
+	if t == alert_target_chan {
+		for m in msgs {
+			e.store.enqueue_outbound(target_chan, alerts_channel, m) or {}
+		}
+		return 'public channel'
+	}
+	if t.starts_with('node:') {
+		node := valid_node_prefix(t['node:'.len..])
+		if node.len == 0 {
+			return 'ERR: bad node id'
+		}
 		for m in msgs {
 			e.store.enqueue_outbound(target_dm, node, m) or {}
 		}
-		return '1 DM (test node)'
+		return 'DM to ${node}'
 	}
-	return e.send_alert_messages(msgs, true, true)
+	where := e.send_alert_messages(msgs, true, true)
+	return if where.len > 0 { where } else { 'nobody (no restricted node is set)' }
 }
 
-// ALERTTEST (sysop only): DM the test to the test node. `ALERTTEST ALL` sends
-// it to the scope's full audience, exactly like the web UI button.
+// ALERTTEST (sysop only):
+//   ALERTTEST          DM to you
+//   ALERTTEST CHAN     the public channel
+//   ALERTTEST ALL      the current scope's audience (like a real alert)
+//   ALERTTEST <nodeid> DM to that node (hex pubkey prefix)
 fn (mut e Engine) alert_test(sess Session, args string) string {
 	user := e.current_user(sess) or { return 'No account.' }
 	if !has_permission(user, 'broadcast') {
 		return 'ALERTTEST is for sysops only.'
 	}
-	scope := args.trim_space().to_upper()
-	if scope !in ['', 'ALL'] {
-		return 'Usage: ALERTTEST (test node only) | ALERTTEST ALL (whole audience for the current scope)'
+	a := args.trim_space().to_lower()
+	target := match true {
+		a == '' { 'node:${sess.pubkey_prefix}' }
+		a == 'chan' { alert_target_chan }
+		a == 'all' { alert_target_scope }
+		valid_node_prefix(a).len > 0 { 'node:${a}' }
+		else { '' }
+	}
+	if target.len == 0 {
+		return 'Usage: ALERTTEST (DM to you) | ALERTTEST CHAN | ALERTTEST ALL | ALERTTEST <nodeid>'
 	}
 	history := fetch_alert_history_body() or { '' }
-	return 'Test alert queued (pre, alert, post) -> ${e.queue_alert_test(history, scope == 'ALL')}.'
-}
-
-// alert_test_to is alert_test's core with the history body supplied (testable).
-fn (mut e Engine) alert_test_to(everyone bool, history string) string {
-	return e.queue_alert_test(history, everyone)
+	return 'Test alert queued (pre, alert, post) -> ${e.queue_alert_test(history, target)}.'
 }
 
 // handle_alert_requests runs test requests queued by the web UI.
@@ -394,7 +435,7 @@ fn (mut e Engine) handle_alert_requests() {
 
 fn (mut e Engine) handle_alert_requests_with(pending []AlertRequest, history string) {
 	for r in pending {
-		note := e.queue_alert_test(history, true)
+		note := e.queue_alert_test(history, r.target)
 		e.store.alert_request_done(r.id, note) or {}
 		println('[alerts] web test #${r.id} -> ${note}')
 	}

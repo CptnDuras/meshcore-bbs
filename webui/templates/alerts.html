@@ -38,8 +38,12 @@ Sysops can send a test with <code>ALERTTEST</code> from the BBS.</p>
 			<button type="submit">Restrict to test node only</button>
 		</form>
 	@else
-		<p><strong>RESTRICTED</strong> &mdash; every alert (real or test) is sent only as a DM to
-		<strong>@{h(page.node_name)}</strong> (<code>@{h(page.test_node)}</code>). Nothing goes to the public channel or any other node.</p>
+		<p><strong>RESTRICTED</strong> &mdash; real alerts are sent only as a DM to the node chosen below.
+		Nothing goes to the public channel or any other node.
+		@if page.test_node.len == 0
+			<strong style="color:var(--bad)">No node is chosen, so real alerts are not being sent to anyone.</strong>
+		@end
+		</p>
 		<form method="post" action="/alerts/scope" onsubmit="return confirm('Make weather alerts PUBLIC? Real alerts will go to the public channel and DM everyone.')">
 			<input type="hidden" name="scope" value="public">
 			<label><input type="checkbox" name="confirm" value="yes"> I understand this goes to the public channel and all users</label>
@@ -49,16 +53,50 @@ Sysops can send a test with <code>ALERTTEST</code> from the BBS.</p>
 </fieldset>
 
 <fieldset>
+	<legend>Restricted-mode node</legend>
+	<form method="post" action="/alerts/node">
+		<label>Send restricted alerts to
+			<select name="node">
+				<option value="">(nobody)</option>
+				@for n in page.nodes
+					<option value="@{n.prefix}" @{n.sel}>@{h(n.label)}</option>
+				@end
+			</select>
+		</label>
+		<button type="submit">Save</button>
+	</form>
+</fieldset>
+
+<fieldset>
+	<legend>Public channel commands</legend>
+	<form method="post" action="/alerts/chancmds">
+		<label><input type="checkbox" name="enabled" value="1" @{checked_attr(page.chan_cmds)}>
+		Answer <code>/weather</code>, <code>/forecast</code>, <code>/alerts</code> and <code>/help</code> on the channel they were sent on</label>
+		<button type="submit">Save</button>
+	</form>
+	<small>One reply per command, once a minute per person, at most 6 replies per 5 minutes on the channel.</small>
+</fieldset>
+
+<fieldset>
 	<legend>Send a test alert</legend>
 	<p>Sends a <strong>real past alert</strong> (the most recent Warning NWS issued for Sheridan/Johnson in the last 60 days),
-	wrapped in a &ldquo;*** TEST ***&rdquo; message before and an &ldquo;*** END OF TEST ***&rdquo; message after, to
-	@if page.public
-		<strong>the public channel and all users</strong> (scope is PUBLIC).
-	@else
-		<strong>@{h(page.node_name)}</strong> only.
-	@end
-	</p>
-	<form method="post" action="/alerts/test">
+	wrapped in a &ldquo;*** TEST ***&rdquo; message before and an &ldquo;*** END OF TEST ***&rdquo; message after.</p>
+	<form method="post" action="/alerts/test" onsubmit="return confirm('Send the test now?')">
+		<label>To
+			<select name="target">
+				<option value="scope">Current audience (@if page.public
+					public channel + everyone
+				@else
+					the restricted node
+				@end)</option>
+				<option value="chan">Public channel only</option>
+				@for n in page.nodes
+					<option value="node:@{n.prefix}">DM: @{h(n.label)}</option>
+				@end
+				<option value="custom">DM: node id typed here &rarr;</option>
+			</select>
+		</label>
+		<input name="custom" size="14" placeholder="hex node id">
 		<button type="submit">Send test alert</button>
 	</form>
 	@if page.pending > 0

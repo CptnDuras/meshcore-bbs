@@ -212,7 +212,13 @@ fn test_h_escapes_html() {
 }
 
 fn add_log(mut db sqlite.DB, ts int, kind string, broker string, summary string, detail string) {
-	db.exec_param_many('INSERT INTO mqtt_log (ts, kind, broker, summary, detail) VALUES (?,?,?,?,?)', [ts.str(), kind, broker, summary, detail]) or {
+	db.exec_param_many('INSERT INTO mqtt_log (ts, kind, broker, summary, detail) VALUES (?,?,?,?,?)', [
+		ts.str(),
+		kind,
+		broker,
+		summary,
+		detail,
+	]) or {
 		panic(err)
 	}
 }
@@ -256,14 +262,14 @@ fn test_log_helpers() {
 	assert mqtt_log_kind('packet') == 'packet'
 	assert mqtt_log_kind('x') == 'all'
 	txt := mqtt_log_text([MqttLogView{
-		time: 't'
-		kind: 'packet'
+		time:    't'
+		kind:    'packet'
 		summary: 's'
-		detail: 'd'
+		detail:  'd'
 	}, MqttLogView{
-		time: 't2'
-		kind: 'broker'
-		broker: 'b'
+		time:    't2'
+		kind:    'broker'
+		broker:  'b'
 		summary: 'connected'
 	}])
 	assert txt == 't  packet  s\n    d\nt2  broker [b]  connected\n'

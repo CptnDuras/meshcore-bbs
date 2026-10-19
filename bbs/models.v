@@ -252,6 +252,7 @@ pub mut:
 	requested i64
 	done      bool
 	note      string
+	target    string // scope | chan | node:<hex>; '' means scope
 }
 
 // SentHeadline records a news headline already broadcast, so news aging can

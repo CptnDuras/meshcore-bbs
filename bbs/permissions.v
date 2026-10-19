@@ -34,9 +34,14 @@ pub fn (p Perm) str_name() string {
 pub fn min_level(action string) Perm {
 	return match action {
 		'read', 'who', 'help', 'list', 'oneliner_read', 'bulletin_read' { Perm.unverified }
-		'post', 'mail', 'enter', 'tell', 'oneliner_post', 'reply', 'poll_create', 'vote', 'channel_add' { Perm.user }
+		'post', 'mail', 'enter', 'tell', 'oneliner_post', 'reply', 'poll_create', 'vote',
+		'channel_add' {
+			Perm.user
+		}
 		'create_room', 'delete_room', 'verify_user', 'set_perm', 'delete_message',
-		'move_message', 'ban_user', 'twit_user' { Perm.aide }
+		'move_message', 'ban_user', 'twit_user' {
+			Perm.aide
+		}
 		'sysop_config', 'bulletin_post', 'broadcast' { Perm.sysop }
 		else { Perm.sysop } // unknown actions default to most-restrictive
 	}

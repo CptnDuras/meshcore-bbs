@@ -53,13 +53,13 @@ struct Table {
 }
 
 struct Sched {
-	id       string
-	target   string
-	text     string
-	source   string
-	kind     string
-	whenv    string
-	enabled  bool
+	id      string
+	target  string
+	text    string
+	source  string
+	kind    string
+	whenv   string
+	enabled bool
 }
 
 struct UserRow {
@@ -159,7 +159,6 @@ pub fn (app &App) users(mut ctx Context) veb.Result {
 	return $veb.html('templates/users.html')
 }
 
-
 // --- MQTT observer settings ---
 
 @['/mqtt']
@@ -192,7 +191,9 @@ fn mqtt_back(mut ctx Context, err string) veb.Result {
 	if err.len > 0 {
 		return ctx.redirect('/mqtt?err=' + urllib.query_escape(err), typ: .found)
 	}
-	return ctx.redirect('/mqtt?msg=' + urllib.query_escape('Saved. The daemon applies changes within a few seconds.'), typ: .found)
+	return ctx.redirect('/mqtt?msg=' + urllib.query_escape('Saved. The daemon applies changes within a few seconds.'),
+		typ: .found
+	)
 }
 
 @['/mqtt/settings'; post]
@@ -345,10 +346,12 @@ fn scalar(mut db sqlite.DB, q string) string {
 }
 
 fn query_table(mut db sqlite.DB, headers []string, q string) Table {
-	rows := db.exec(q) or { return Table{
-		headers: headers
-		rows:    []
-	} }
+	rows := db.exec(q) or {
+		return Table{
+			headers: headers
+			rows:    []
+		}
+	}
 	mut out := []Row{}
 	for r in rows {
 		mut cells := []string{}

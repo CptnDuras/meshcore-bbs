@@ -79,7 +79,7 @@ fn mqtt_is_timeout(err IError) bool {
 @[heap]
 struct MqttRawConn {
 mut:
-	tcp &net.TcpConn = unsafe { nil }
+	tcp &net.TcpConn     = unsafe { nil }
 	tls &mbedtls.SSLConn = unsafe { nil }
 }
 
@@ -245,8 +245,8 @@ pub fn mqtt_dial_real(b MqttCfgBroker) !MqttConn {
 	}
 	if tls {
 		mut c := mbedtls.new_ssl_conn(
-			verify: ca
-			validate: true
+			verify:       ca
+			validate:     true
 			read_timeout: mqtt_poll
 		) or {
 			t.close() or {}

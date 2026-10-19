@@ -81,8 +81,8 @@ fn test_audit_log_not_exposed_to_callers() {
 	// pull interaction rows through the command interface.
 	e.handle('adminNode', 'NEW sysop pw')
 
-	probes := ['STATS', 'LOG', 'LOGS', 'AUDIT', 'INTERACTIONS', 'HISTORY', 'SEEN',
-		'SEEN secretNode', 'TRACK', 'WHOIS secretNode']
+	probes := ['STATS', 'LOG', 'LOGS', 'AUDIT', 'INTERACTIONS', 'HISTORY', 'SEEN', 'SEEN secretNode',
+		'TRACK', 'WHOIS secretNode']
 	for p in probes {
 		resp := e.handle('adminNode', p)
 		// The distinctive sender prefix from the audit row must never surface,

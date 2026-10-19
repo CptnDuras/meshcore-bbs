@@ -209,49 +209,97 @@ fn test_test_messages_wrap_real_alert_or_sample() {
 	assert f[1].contains('made-up sample')
 }
 
-fn test_default_scope_is_restricted_to_test_node_only() {
+fn test_restricted_scope_sends_only_to_configured_node() {
 	mut e := alert_engine()
 	e.handle('aa', 'HELP')
 	e.handle('bb', 'HELP')
 	body := alerts_body([
 		alert_feature('a', 'Tornado Warning', 'Extreme', '"056033"', 'Actual', '2026-10-19T06:00:00-06:00'),
-		alert_feature('b', 'Wind Advisory', 'Moderate', '"056019"', 'Actual', '2026-10-19T06:00:00-06:00'),
 	])
-	assert e.process_alerts(body, now_ts) == 2
-	e.alert_test_to(true, '')
-	e.alert_test_to(false, '')
+	// nothing configured: restricted scope sends nothing at all
+	assert e.process_alerts(body, now_ts) == 1
+	assert e.store.count_outbound_pending() == 0
+	e.store.alert_set('alert_test_node', 'ABCD1234') or { panic(err) }
+	e.process_alerts(alerts_body([
+		alert_feature('b', 'Flood Warning', 'Severe', '"056019"', 'Actual', '2026-10-19T06:00:00-06:00'),
+	]), now_ts)
 	out := e.store.pending_outbound(100)
-	assert out.len == 2 + 3 + 3
-	for m in out {
-		assert m.target_kind == target_dm
-		assert m.target == alert_default_test_node
-	}
+	assert out.len == 1
+	assert out[0].target_kind == target_dm
+	assert out[0].target == 'abcd1234'
 }
 
-fn test_web_request_follows_scope() {
+fn test_test_targets() {
 	mut e := alert_engine()
 	e.handle('aa', 'HELP')
 	e.handle('bb', 'HELP')
-	req := [AlertRequest{
-		id: 1
-	}]
-	e.handle_alert_requests_with(req, '')
+	assert e.queue_alert_test('', 'chan') == 'public channel'
+	assert e.queue_alert_test('', 'node:DEADBEEF01') == 'DM to deadbeef01'
+	assert e.queue_alert_test('', 'node:zz').starts_with('ERR')
+	assert e.queue_alert_test('', 'scope').contains('nobody')
+	out := e.store.pending_outbound(100)
+	assert out.len == 6
+	assert out[0].target_kind == target_chan && out[0].target == '0'
+	assert out[3].target_kind == target_dm && out[3].target == 'deadbeef01'
+	for m in out {
+		assert m.text.len > 0
+	}
+	assert out[0].text.starts_with('*** TEST ***')
+	assert out[2].text.starts_with('*** END OF TEST ***')
+}
+
+// The public-channel test must never look like a real alert: the first message
+// announces a test, the alert line itself says TEST, and the last message ends
+// the test. All go to channel 0, in that order, and to nobody by DM.
+fn test_public_channel_test_is_clearly_marked_and_ordered() {
+	mut e := alert_engine()
+	e.handle('aa', 'HELP')
+	e.handle('bb', 'HELP')
+	body := alerts_body([
+		history_feature('b', 'Freeze Warning', 'Severe', '"056033"', 'Actual', 'Alert', '2026-10-15T12:23:00-06:00', '2026-10-16T09:00:00-06:00'),
+	])
+	assert e.queue_alert_test(body, 'chan') == 'public channel'
 	out := e.store.pending_outbound(100)
 	assert out.len == 3
 	for m in out {
-		assert m.target == alert_default_test_node
+		assert m.target_kind == target_chan
+		assert m.target == '0'
 	}
-	e.store.alert_set('alert_scope', 'public') or { panic(err) }
-	e.handle_alert_requests_with(req, '')
-	all := e.store.pending_outbound(100)
-	// restricted run (3) + public run: 3 channel + 2 sessions x 3 DMs
-	assert all.len == 3 + 3 + 6
+	assert out[0].id < out[1].id && out[1].id < out[2].id
+	assert out[0].text.starts_with('*** TEST ***')
+	assert out[1].text.starts_with('TEST (replay of the real alert')
+	assert out[1].text.contains('FREEZE WARNING')
+	assert out[2].text.starts_with('*** END OF TEST ***')
+	for m in out {
+		assert m.text.to_upper().contains('TEST')
+	}
 }
 
-fn test_alert_requests_roundtrip() {
+fn test_scope_target_public_reaches_channel_and_everyone() {
 	mut e := alert_engine()
-	assert e.store.alert_requests_pending().len == 0
-	// the web UI inserts rows like this
+	e.handle('aa', 'HELP')
+	e.handle('bb', 'HELP')
+	e.store.alert_set('alert_scope', 'public') or { panic(err) }
+	e.handle_alert_requests_with([AlertRequest{
+		id:     1
+		target: 'scope'
+	}], '')
+	assert e.store.pending_outbound(100).len == 3 + 6
+}
+
+fn test_web_request_uses_its_target() {
+	mut e := alert_engine()
+	e.handle_alert_requests_with([AlertRequest{
+		id:     1
+		target: 'chan'
+	}], '')
+	out := e.store.pending_outbound(100)
+	assert out.len == 3
+	assert out[1].target_kind == target_chan
+}
+
+fn test_alert_settings_roundtrip() {
+	mut e := alert_engine()
 	e.store.alert_set('x', '1') or { panic(err) }
 	assert (e.store.alert_get('x') or { '' }) == '1'
 	e.store.alert_set('x', '2') or { panic(err) }
@@ -261,12 +309,21 @@ fn test_alert_requests_roundtrip() {
 	}
 }
 
-fn test_alerttest_sysop_only_and_test_node_default() {
+fn test_alerttest_command_targets() {
 	mut e := alert_engine()
 	e.handle('aa', 'HELP') // first account = sysop
 	e.handle('bb', 'HELP') // ordinary user
 	assert e.handle('bb', 'ALERTTEST').contains('sysops only')
 	assert e.store.count_outbound_pending() == 0
-	assert e.handle('aa', 'ALERTTEST bogus').contains('Usage')
+	assert e.handle('aa', 'ALERTTEST bogus!').contains('Usage')
+	assert e.handle('aa', 'ALERTTEST CHAN').contains('public channel')
+	assert e.handle('aa', 'ALERTTEST abcdef').contains('DM to abcdef')
 	assert 'ALERTTEST' in known_commands
+}
+
+fn test_valid_node_prefix() {
+	assert valid_node_prefix(' D2267935C4D5 ') == 'd2267935c4d5'
+	assert valid_node_prefix('xyz1234') == ''
+	assert valid_node_prefix('ab') == ''
+	assert valid_node_prefix('') == ''
 }

@@ -117,9 +117,9 @@ pub fn ws_next_frame(mut buf []u8) !WsFrame {
 	}
 	f := WsFrame{
 		complete: true
-		fin: fin
-		opcode: opcode
-		payload: buf[i..i + len].clone()
+		fin:      fin
+		opcode:   opcode
+		payload:  buf[i..i + len].clone()
 	}
 	buf.delete_many(0, i + len)
 	return f

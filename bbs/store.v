@@ -206,6 +206,7 @@ pub fn (mut s SqliteStore) migrate() ! {
 	// only ALTER when the column is absent). SQLite has no ADD COLUMN IF NOT
 	// EXISTS, so we probe PRAGMA table_info first.
 	s.add_column_if_missing('scheduled_messages', 'source', "TEXT NOT NULL DEFAULT 'static'")!
+	s.add_column_if_missing('alert_requests', 'target', "TEXT NOT NULL DEFAULT ''")!
 	s.add_column_if_missing('sessions', 'greeted', 'INTEGER NOT NULL DEFAULT 0')!
 }
 
@@ -1364,12 +1365,14 @@ pub fn (mut s SqliteStore) alert_keys_prune(before i64) ! {
 	}!
 }
 
+// list_sessions returns every session; each node that has talked to the BBS has one.
 pub fn (mut s SqliteStore) list_sessions() []Session {
 	return sql s.db {
 		select from Session
 	} or { []Session{} }
 }
 
+// alert_get reads a weather-alert setting or status value by key.
 pub fn (mut s SqliteStore) alert_get(key string) ?string {
 	rows := sql s.db {
 		select from AlertSetting where key == key limit 1
@@ -1380,6 +1383,7 @@ pub fn (mut s SqliteStore) alert_get(key string) ?string {
 	return rows[0].val
 }
 
+// alert_set creates or updates a weather-alert setting or status value.
 pub fn (mut s SqliteStore) alert_set(key string, val string) ! {
 	rows := sql s.db {
 		select from AlertSetting where key == key limit 1
@@ -1400,12 +1404,14 @@ pub fn (mut s SqliteStore) alert_set(key string, val string) ! {
 	}
 }
 
+// alert_requests_pending returns test-alert requests from the web UI not yet handled.
 pub fn (mut s SqliteStore) alert_requests_pending() []AlertRequest {
 	return sql s.db {
 		select from AlertRequest where done == false order by id limit 10
 	} or { []AlertRequest{} }
 }
 
+// alert_request_done marks a test-alert request handled and records where it went.
 pub fn (mut s SqliteStore) alert_request_done(id int, note string) ! {
 	sql s.db {
 		update AlertRequest set done = true, note = note where id == id

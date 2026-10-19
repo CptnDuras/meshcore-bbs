@@ -22,7 +22,7 @@ pub mut:
 pub fn load_mqtt_config(mut store Store) MqttConfig {
 	mut cfg := MqttConfig{
 		enabled: (store.mqtt_get('enabled') or { '0' }) == '1'
-		iata: normalize_iata(store.mqtt_get('iata') or { '' })
+		iata:    normalize_iata(store.mqtt_get('iata') or { '' })
 	}
 	for b in store.list_mqtt_brokers() {
 		if b.enabled {
@@ -85,11 +85,11 @@ pub fn parse_packet(raw []u8) ?PacketInfo {
 	msg << payload
 	digest := sha256.sum256(msg)
 	return PacketInfo{
-		route: if route_type == 2 || route_type == 3 { 'D' } else { 'F' }
+		route:       if route_type == 2 || route_type == 3 { 'D' } else { 'F' }
 		packet_type: ptype
 		payload_len: payload.len
-		raw_len: raw.len
-		hash: digest[..8].hex().to_upper()
+		raw_len:     raw.len
+		hash:        digest[..8].hex().to_upper()
 	}
 }
 
@@ -110,31 +110,31 @@ pub fn valid_iata(s string) bool {
 
 fn broker_to_cfg(b MqttBroker) mqttcfg.Broker {
 	return mqttcfg.Broker{
-		name: b.name
-		enabled: b.enabled
-		host: b.host
-		port: b.port
+		name:      b.name
+		enabled:   b.enabled
+		host:      b.host
+		port:      b.port
 		transport: b.transport
-		path: b.path
-		auth: b.auth
-		username: b.username
-		password: b.password
-		audience: b.audience
+		path:      b.path
+		auth:      b.auth
+		username:  b.username
+		password:  b.password
+		audience:  b.audience
 	}
 }
 
 fn broker_from_cfg(b mqttcfg.Broker) MqttBroker {
 	return MqttBroker{
-		name: b.name
-		enabled: b.enabled
-		host: b.host
-		port: b.port
+		name:      b.name
+		enabled:   b.enabled
+		host:      b.host
+		port:      b.port
 		transport: b.transport
-		path: b.path
-		auth: b.auth
-		username: b.username
-		password: b.password
-		audience: b.audience
+		path:      b.path
+		auth:      b.auth
+		username:  b.username
+		password:  b.password
+		audience:  b.audience
 	}
 }
 

@@ -81,12 +81,12 @@ fn test_valid_iata() {
 
 fn test_validate_broker() {
 	ok := MqttBroker{
-		name: 'x'
-		host: 'mqtt.example.org'
-		port: 443
+		name:      'x'
+		host:      'mqtt.example.org'
+		port:      443
 		transport: 'wss'
-		auth: 'token'
-		audience: 'mqtt.example.org'
+		auth:      'token'
+		audience:  'mqtt.example.org'
 	}
 	assert mqtt_validate_broker(ok) == ''
 	mut b := ok

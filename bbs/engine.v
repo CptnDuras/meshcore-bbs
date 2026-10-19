@@ -17,6 +17,9 @@ pub mut:
 	// turn time (epoch secs). See rate_limit.v.
 	min_turn_interval i64
 	last_turn         map[string]i64
+	// public-channel slash command limits (see chancmd.v)
+	chan_cmd_last   map[string]i64
+	chan_cmd_recent []i64
 }
 
 // handle processes one inbound line from a node and returns reply text.
@@ -157,7 +160,11 @@ fn (mut e Engine) dispatch(mut sess Session, line string) string {
 			return fetch_weather()
 		}
 		'FORECAST', 'FC' {
-			days := if args.trim_space().len > 0 { args.trim_space().int() } else { forecast_default_days }
+			days := if args.trim_space().len > 0 {
+				args.trim_space().int()
+			} else {
+				forecast_default_days
+			}
 			return fetch_forecast(days)
 		}
 		'ALERTTEST' {
@@ -322,11 +329,11 @@ fn (mut e Engine) handle_unknown(mut sess Session, cmd string, args string) stri
 }
 
 // known_commands is the set used for "did you mean" suggestions.
-const known_commands = ['HELP', 'MENU', 'WHO', 'WX', 'FORECAST', 'SPACEWX', 'NEWS', 'LIST',
-	'READ', 'POST', 'NEW', 'CLAIM', 'SETPASS', 'LOGIN', 'LOGOUT', 'KNOWN', 'CHANGE', 'GOTO',
-	'ENTER', 'MAIL', 'MAILBOX', 'CHECKMAIL', 'THREAD', 'ONELINER', 'BULLETIN', 'POLL', 'VOTE', 'RESULTS', 'PROFILE',
-	'SETBIO', 'CHANNELS', 'CHANADD', 'STATS', 'FORTUNE', 'ROLL', '8BALL', 'JOKE', 'CONFIG',
-	'TELL', 'CALLERS', 'ALERTS', 'ALERTTEST']
+const known_commands = ['HELP', 'MENU', 'WHO', 'WX', 'FORECAST', 'SPACEWX', 'NEWS', 'LIST', 'READ',
+	'POST', 'NEW', 'CLAIM', 'SETPASS', 'LOGIN', 'LOGOUT', 'KNOWN', 'CHANGE', 'GOTO', 'ENTER', 'MAIL',
+	'MAILBOX', 'CHECKMAIL', 'THREAD', 'ONELINER', 'BULLETIN', 'POLL', 'VOTE', 'RESULTS', 'PROFILE',
+	'SETBIO', 'CHANNELS', 'CHANADD', 'STATS', 'FORTUNE', 'ROLL', '8BALL', 'JOKE', 'CONFIG', 'TELL',
+	'CALLERS', 'ALERTS', 'ALERTTEST']
 
 // suggest_command returns the closest known command to `cmd` if one is within a
 // small edit distance (a simple typo helper), else none.

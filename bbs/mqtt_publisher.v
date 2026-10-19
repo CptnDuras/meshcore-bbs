@@ -50,13 +50,13 @@ struct MqttStatusPayload {
 fn (c MqttPubCore) status_json(status string, ts i64) string {
 	t := time.unix(ts)
 	return json2.encode(MqttStatusPayload{
-		status: status
-		timestamp: '${t.year:04}-${t.month:02}-${t.day:02}T${t.hour:02}:${t.minute:02}:${t.second:02}Z'
-		origin: c.origin
-		origin_id: c.origin_id
-		model: if c.model.len > 0 { c.model } else { 'unknown' }
+		status:           status
+		timestamp:        '${t.year:04}-${t.month:02}-${t.day:02}T${t.hour:02}:${t.minute:02}:${t.second:02}Z'
+		origin:           c.origin
+		origin_id:        c.origin_id
+		model:            if c.model.len > 0 { c.model } else { 'unknown' }
 		firmware_version: if c.fw.len > 0 { c.fw } else { 'unknown' }
-		client_version: mqtt_client_version
+		client_version:   mqtt_client_version
 	},
 		escape_unicode: true
 	)
@@ -83,15 +83,15 @@ fn (c MqttPubCore) credentials(b MqttCfgBroker, now i64) !MqttCreds {
 			tok := mqtt_create_token(c.origin_id, c.key, b.audience, mqtt_token_ttl, now, mqtt_client_version)!
 			return MqttCreds{
 				has_login: true
-				username: mqtt_username(c.origin_id)
-				password: tok
+				username:  mqtt_username(c.origin_id)
+				password:  tok
 			}
 		}
 		'password' {
 			return MqttCreds{
 				has_login: true
-				username: b.username
-				password: b.password
+				username:  b.username
+				password:  b.password
 			}
 		}
 		else {
@@ -131,10 +131,10 @@ fn (mut s MqttChanSink) push(line string) {
 
 pub fn (mut s MqttChanSink) set(id int, state string, err string, published i64, ts i64) {
 	s.push(json2.encode(MqttStatusMsg{
-		t: 'status'
-		id: id
-		state: state
-		err_msg: err
+		t:         'status'
+		id:        id
+		state:     state
+		err_msg:   err
 		published: published
 	},
 		escape_unicode: true
@@ -143,7 +143,7 @@ pub fn (mut s MqttChanSink) set(id int, state string, err string, published i64,
 
 pub fn (mut s MqttChanSink) delete(id int) {
 	s.push(json2.encode(MqttStatusMsg{
-		t: 'delete'
+		t:  'delete'
 		id: id
 	},
 		escape_unicode: true
@@ -156,7 +156,7 @@ pub fn (mut s MqttChanSink) delete(id int) {
 pub interface MqttLink {
 mut:
 	offer(payload string) bool // queue a packet payload; false if not connected or full
-	stop(report bool) // finish asynchronously: offline status, DISCONNECT; report "stopped"
+	stop(report bool)          // finish asynchronously: offline status, DISCONNECT; report "stopped"
 	is_done() bool
 }
 
@@ -176,7 +176,7 @@ fn mqtt_try_recv(ch chan string) ?string {
 pub struct MqttWorker {
 	spec MqttBrokerSpec
 	dial MqttDialer = unsafe { nil }
-	now  fn () i64 = unsafe { nil }
+	now  fn () i64  = unsafe { nil }
 	out  chan string
 mut:
 	sink        MqttSink
@@ -196,8 +196,8 @@ pub fn mqtt_start_worker(spec MqttBrokerSpec, dial MqttDialer, sink MqttSink, no
 	mut w := &MqttWorker{
 		spec: spec
 		dial: dial
-		now: now
-		out: chan string{ cap: 256 }
+		now:  now
+		out:  chan string{cap: 256}
 		sink: sink
 	}
 	spawn mqtt_worker_main(mut w)
@@ -319,14 +319,14 @@ fn (mut w MqttWorker) open() !MqttConn {
 	creds := core.credentials(b, w.token_time)!
 	mut conn := w.dial(b)!
 	opts := MqttConnectOpts{
-		client_id: mqtt_client_id(core, b.id)
-		has_login: creds.has_login
-		username: creds.username
-		password: creds.password
-		keepalive: mqtt_keepalive
-		will_topic: core.topic('status')
+		client_id:    mqtt_client_id(core, b.id)
+		has_login:    creds.has_login
+		username:     creds.username
+		password:     creds.password
+		keepalive:    mqtt_keepalive
+		will_topic:   core.topic('status')
 		will_payload: core.status_json('offline', w.now())
-		will_retain: true
+		will_retain:  true
 	}
 	conn.write_all(mqtt_connect_packet(opts)) or {
 		conn.close()
@@ -464,7 +464,7 @@ pub struct MqttPublisher {
 mut:
 	sink     MqttSink
 	starter  fn (spec MqttBrokerSpec) MqttLink = unsafe { nil }
-	now      fn () i64 = unsafe { nil }
+	now      fn () i64                         = unsafe { nil }
 	has_core bool
 	core     MqttPubCore
 	conns    map[int]MqttConnEntry
@@ -472,9 +472,9 @@ mut:
 
 pub fn new_mqtt_publisher(sink MqttSink, starter fn (spec MqttBrokerSpec) MqttLink, now fn () i64) &MqttPublisher {
 	return &MqttPublisher{
-		sink: sink
+		sink:    sink
 		starter: starter
-		now: now
+		now:     now
 	}
 }
 
@@ -520,12 +520,12 @@ fn (mut p MqttPublisher) stop_all(report bool) {
 
 fn (mut p MqttPublisher) apply_config(m MqttInCmd) {
 	core := MqttPubCore{
-		iata: m.iata.to_upper()
-		origin: m.origin
+		iata:      m.iata.to_upper()
+		origin:    m.origin
 		origin_id: m.origin_id.to_upper()
-		model: m.model
-		fw: m.fw
-		key: m.key
+		model:     m.model
+		fw:        m.fw
+		key:       m.key
 	}
 	if p.has_core && p.core != core {
 		p.stop_all(false)
@@ -568,8 +568,8 @@ fn (mut p MqttPublisher) start(b MqttCfgBroker, fp string) {
 	link := p.starter(MqttBrokerSpec{ broker: b, core: p.core })
 	p.conns[b.id] = MqttConnEntry{
 		fingerprint: fp
-		has_link: true
-		link: link
+		has_link:    true
+		link:        link
 	}
 }
 
@@ -605,8 +605,8 @@ pub fn new_native_pipe() !MqttPipe {
 // new_native_pipe_with is new_native_pipe with the dialer and clock injected.
 pub fn new_native_pipe_with(dial MqttDialer, now fn () i64) !MqttPipe {
 	mut np := &MqttNativePipe{
-		cmds: chan string{ cap: 512 }
-		status: chan string{ cap: 256 }
+		cmds:   chan string{cap: 512}
+		status: chan string{cap: 256}
 	}
 	sink := &MqttChanSink{
 		ch: np.status
