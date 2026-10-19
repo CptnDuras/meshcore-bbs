@@ -122,6 +122,11 @@ mut:
 	alert_set(key string, val string) !
 	alert_requests_pending() []AlertRequest
 	alert_request_done(id int, note string) !
+	// help text kept in the database (see help_catalog.v)
+	list_help_topics() []HelpTopicRow
+	list_help_commands() []HelpCommandRow
+	list_help_messages() []HelpMessageRow
+	replace_help(topics []HelpTopicRow, cmds []HelpCommandRow, msgs []HelpMessageRow) !
 	// proactive mail-notice guard
 	get_mail_notice(handle string) ?MailNotice
 	record_mail_notice(handle string, count int, now i64) !
@@ -195,6 +200,9 @@ pub fn (mut s SqliteStore) migrate() ! {
 		create table WxAlertSent
 		create table AlertSetting
 		create table AlertRequest
+		create table HelpTopicRow
+		create table HelpCommandRow
+		create table HelpMessageRow
 		create table MqttSetting
 		create table MqttBroker
 		create table MqttStatus
@@ -1416,4 +1424,49 @@ pub fn (mut s SqliteStore) alert_request_done(id int, note string) ! {
 	sql s.db {
 		update AlertRequest set done = true, note = note where id == id
 	}!
+}
+
+// list_help_topics returns the topics imported into the database, in menu order.
+pub fn (mut s SqliteStore) list_help_topics() []HelpTopicRow {
+	return sql s.db {
+		select from HelpTopicRow order by num
+	} or { []HelpTopicRow{} }
+}
+
+// list_help_commands returns the per-command help entries, in import order.
+pub fn (mut s SqliteStore) list_help_commands() []HelpCommandRow {
+	return sql s.db {
+		select from HelpCommandRow order by id
+	} or { []HelpCommandRow{} }
+}
+
+// list_help_messages returns the named help messages (menu header, welcome, ...).
+pub fn (mut s SqliteStore) list_help_messages() []HelpMessageRow {
+	return sql s.db {
+		select from HelpMessageRow
+	} or { []HelpMessageRow{} }
+}
+
+// replace_help swaps all help rows for the given ones. Callers validate first.
+pub fn (mut s SqliteStore) replace_help(topics []HelpTopicRow, cmds []HelpCommandRow, msgs []HelpMessageRow) ! {
+	sql s.db {
+		delete from HelpTopicRow where id > 0
+		delete from HelpCommandRow where id > 0
+		delete from HelpMessageRow where id > 0
+	}!
+	for t in topics {
+		sql s.db {
+			insert t into HelpTopicRow
+		}!
+	}
+	for c in cmds {
+		sql s.db {
+			insert c into HelpCommandRow
+		}!
+	}
+	for m in msgs {
+		sql s.db {
+			insert m into HelpMessageRow
+		}!
+	}
 }

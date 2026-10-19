@@ -22,6 +22,17 @@ pub mut:
 	chan_cmd_recent []i64
 	// help is injected so the wording or lookup can be swapped (see help.v)
 	help HelpRenderer = default_help_renderer()
+	// help_file is the config file HELPRELOAD/HELPIMPORT read (see help_catalog.v)
+	help_file string = 'help.txt'
+	// commands is the set of BBS commands; injected so tests can register only
+	// the feature under test (see commands.v)
+	commands CommandSource = standard_commands()
+}
+
+// is_sysop reports whether the session's user is a sysop.
+fn (mut e Engine) is_sysop(sess Session) bool {
+	u := e.current_user(sess) or { return false }
+	return perm_from_int(u.perm) == Perm.sysop
 }
 
 // handle processes one inbound line from a node and returns reply text.
@@ -162,173 +173,11 @@ fn (mut e Engine) dispatch(mut sess Session, line string) string {
 		}
 	}
 
-	// --- commands available to everyone ---
-	match cmd {
-		'HELP', '?' {
-			return e.help_reply(sess, args)
-		}
-		'MENU', 'M' {
-			return e.menu(sess)
-		}
-		'WHO', 'W' {
-			return e.who()
-		}
-		'WX', 'WEATHER' {
-			return fetch_weather()
-		}
-		'FORECAST', 'FC' {
-			days := if args.trim_space().len > 0 {
-				args.trim_space().int()
-			} else {
-				forecast_default_days
-			}
-			return fetch_forecast(days)
-		}
-		'ALERTTEST' {
-			return e.alert_test(sess, args)
-		}
-		'ALERTS', 'ALERT' {
-			return fetch_alerts_report()
-		}
-		'SPACEWX', 'SW', 'SPACE' {
-			return fetch_spacewx()
-		}
-		'NEWS' {
-			return e.fetch_news_fresh()
-		}
-		'FORTUNE', 'QOTD' {
-			return e.fortune()
-		}
-		'DICE', 'ROLL' {
-			return e.roll(args)
-		}
-		'8BALL', 'MAGIC8' {
-			return e.magic8(args)
-		}
-		'JOKE' {
-			return e.joke()
-		}
-		'CHANNELS', 'CHANDIR' {
-			return e.channels_list()
-		}
-		'CHANADD' {
-			return e.channel_add(mut sess, args)
-		}
-		'STATS' {
-			return e.stats()
-		}
-		'LIST', 'L' {
-			return e.list_boards()
-		}
-		'READ', 'R' {
-			return e.read_board(mut sess, args)
-		}
-		'REGISTER' {
-			return e.register(mut sess, args)
-		}
-		'CLAIM' {
-			return e.claim(mut sess, args)
-		}
-		'SETPASS' {
-			return e.set_pass(mut sess, args)
-		}
-		'CONFIG', '/CONFIG' {
-			return e.config(mut sess, args)
-		}
-		'LOGIN' {
-			return e.login(mut sess, args)
-		}
-		'LOGOUT', 'Q' {
-			return e.logout(mut sess)
-		}
-		'KNOWN', 'K' {
-			return e.known_rooms(sess)
-		}
-		'CHANGE', 'C' {
-			return e.change_room(mut sess, args)
-		}
-		'NEW', 'N' {
-			return e.new_messages(mut sess)
-		}
-		'GOTO', 'G' {
-			return e.goto_next_unread(mut sess)
-		}
-		'ENTER', 'E' {
-			return e.start_entry(mut sess, args)
-		}
-		'MAIL' {
-			return e.start_mail(mut sess, args)
-		}
-		'THREAD' {
-			return e.thread_view(mut sess, args)
-		}
-		'MAILBOX', 'INBOX' {
-			return e.read_mail(mut sess)
-		}
-		'CHECKMAIL', '/CHECKMAIL', 'CM' {
-			return e.check_mail(mut sess)
-		}
-		'ONELINER', 'O' {
-			return e.oneliner(mut sess, args)
-		}
-		'BULLETIN', 'BULLETINS', 'B' {
-			return e.bulletins()
-		}
-		'POLL', 'POLLS' {
-			return e.polls(mut sess, args)
-		}
-		'VOTE', 'V' {
-			return e.vote(mut sess, args)
-		}
-		'RESULTS' {
-			return e.poll_results(args)
-		}
-		'POLLCLOSE' {
-			return e.close_poll_cmd(mut sess, args)
-		}
-		'BULLET' {
-			return e.post_bulletin(mut sess, args)
-		}
-		'LASTCALLERS', 'CALLERS' {
-			return e.last_callers()
-		}
-		'TELL', 'T' {
-			return e.tell(mut sess, args)
-		}
-		'PROFILE' {
-			return e.profile(args)
-		}
-		'SETBIO' {
-			return e.set_bio(mut sess, args)
-		}
-		'POST', 'P' {
-			return e.post(mut sess, args)
-		}
-		'VERIFY' {
-			return e.verify_user(mut sess, args)
-		}
-		'PROMOTE' {
-			return e.set_perm_cmd(mut sess, args, .aide)
-		}
-		'DEMOTE' {
-			return e.set_perm_cmd(mut sess, args, .user)
-		}
-		'TWIT' {
-			return e.set_perm_cmd(mut sess, args, .twit)
-		}
-		'BAN' {
-			return e.ban_user(mut sess, args, true)
-		}
-		'UNBAN' {
-			return e.ban_user(mut sess, args, false)
-		}
-		'DELETE', 'DEL' {
-			return e.delete_message(mut sess, args)
-		}
-		else {
-			return e.handle_unknown(mut sess, cmd, args)
-		}
+	// every command is a registered function (see commands.v and cmd_*.v)
+	if c := e.commands.find(cmd) {
+		return c.handler(mut e, mut sess, args)
 	}
+	return e.handle_unknown(mut sess, cmd, args)
 }
 
 // handle_unknown is the fallback for an unrecognized command. It first tries a
@@ -339,25 +188,24 @@ fn (mut e Engine) handle_unknown(mut sess Session, cmd string, args string) stri
 	if macro := e.lookup_macro(sess, cmd) {
 		return macro
 	}
-	if sug := suggest_command(cmd) {
+	if sug := suggest_command(cmd, e.command_names()) {
 		return 'Unknown command "${cmd}". Did you mean ${sug}? Send HELP for the full list.'
 	}
 	return 'Unknown command "${cmd}". Send HELP for commands, or MENU to get oriented.'
 }
 
-// known_commands is the set used for "did you mean" suggestions.
-const known_commands = ['HELP', 'MENU', 'WHO', 'WX', 'FORECAST', 'SPACEWX', 'NEWS', 'LIST', 'READ',
-	'POST', 'NEW', 'CLAIM', 'SETPASS', 'LOGIN', 'LOGOUT', 'KNOWN', 'CHANGE', 'GOTO', 'ENTER', 'MAIL',
-	'MAILBOX', 'CHECKMAIL', 'THREAD', 'ONELINER', 'BULLETIN', 'POLL', 'VOTE', 'RESULTS', 'PROFILE',
-	'SETBIO', 'CHANNELS', 'CHANADD', 'STATS', 'FORTUNE', 'ROLL', '8BALL', 'JOKE', 'CONFIG', 'TELL',
-	'CALLERS', 'ALERTS', 'ALERTTEST']
+// command_names lists the primary name of every registered command, for
+// "did you mean" suggestions.
+fn (e Engine) command_names() []string {
+	return e.commands.all().map(it.names[0])
+}
 
-// suggest_command returns the closest known command to `cmd` if one is within a
+// suggest_command returns the closest of `names` to `cmd` if one is within a
 // small edit distance (a simple typo helper), else none.
-fn suggest_command(cmd string) ?string {
+fn suggest_command(cmd string, names []string) ?string {
 	mut best := ''
 	mut best_d := 3 // only suggest when reasonably close
-	for k in known_commands {
+	for k in names {
 		d := edit_distance(cmd, k)
 		if d < best_d {
 			best_d = d

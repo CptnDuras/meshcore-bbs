@@ -255,6 +255,41 @@ pub mut:
 	target    string // scope | chan | node:<hex>; '' means scope
 }
 
+// Help text lives in the database when the sysop has imported it (HELPIMPORT);
+// see help_catalog.v. These rows mirror the help.txt sections.
+@[table: 'help_topics']
+pub struct HelpTopicRow {
+pub mut:
+	id      int @[primary; sql: serial]
+	num     int @[unique]
+	key     string
+	title   string
+	aliases string // comma separated
+	perm    string // unverified | user | aide | sysop
+	try_cmd string
+	notes   string // one note per line
+}
+
+@[table: 'help_commands']
+pub struct HelpCommandRow {
+pub mut:
+	id      int @[primary; sql: serial]
+	names   string // comma separated; the first is the primary name
+	topic   string
+	usage   string
+	summary string
+	example string
+	perm    string
+}
+
+@[table: 'help_messages']
+pub struct HelpMessageRow {
+pub mut:
+	id   int    @[primary; sql: serial]
+	name string @[unique]
+	text string
+}
+
 // SentHeadline records a news headline already broadcast, so news aging can
 // skip it next time (each send surfaces fresh items).
 @[table: 'sent_headlines']

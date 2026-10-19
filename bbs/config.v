@@ -63,7 +63,7 @@ fn (mut e Engine) config_addcmd(owner string, rest string) string {
 	if !valid_macro_name(name) {
 		return 'Command name must be 1-16 letters/digits.'
 	}
-	if name in known_commands {
+	if _ := e.commands.find(name) {
 		return 'Cannot override the built-in command ${name}.'
 	}
 	e.store.add_macro(owner, name, text) or { return 'Failed: ${err}' }

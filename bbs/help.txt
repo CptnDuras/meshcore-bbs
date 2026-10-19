@@ -1,0 +1,475 @@
+# meshbbs guided help: the default text, compiled in as a data file.
+#
+# Where help comes from (first that exists wins):
+#   1. the database  (HELPIMPORT copies a file into it)
+#   2. ./help.txt next to the daemon, to override this default without a rebuild
+#   3. this file
+# After editing 2 or 3 send HELPRELOAD (sysop) or restart the daemon.
+#
+# Sections (a line "[kind ...]" starts one):
+#   [message name]       a text. {bbs} {who} {query} are filled in.
+#   [topic N key]        one menu screen. N is the digit users reply with (1-9).
+#                        headers: title, aliases, perm, try, note (repeatable)
+#   [command NAME]       the help entry for one command, written next to its
+#                        screen. NAME is the command's primary name in the code.
+#                        headers: names (all names, as registered), topic,
+#                        usage, summary, example, perm
+#
+# A topic screen is built from its commands: "usage = summary" per line, then
+# notes, then "Try:". Keep a screen under 150 bytes so it fits one radio message.
+# perm is who sees it: unverified, user, aide or sysop. HELP ALL and HELP <command>
+# are generated from the command entries. A test fails if a registered command
+# has no entry here, or an entry names a command that does not exist.
+
+[message menu_header]
+HELP - reply with a number:
+
+[message menu_footer]
+HELP ALL = every command
+
+[message no_topic]
+No help for "{query}".
+
+[message welcome]
+Welcome to {bbs}! You are {who} (an account was made for you, no signup). Start here: 1) K lists the rooms 2) C general goes into one 3) N reads what is new. Send HELP any time for a guided menu.
+
+# ---------------------------------------------------------------- 1 rooms
+[topic 1 rooms]
+title: Rooms
+aliases: room, board, boards, posts
+try: K
+
+[command KNOWN]
+names: KNOWN, K
+topic: rooms
+usage: K
+summary: list rooms (* = unread)
+example: K shows each room; * means something new for you.
+
+[command CHANGE]
+names: CHANGE, C
+topic: rooms
+usage: C <room>
+summary: go to one
+example: C general
+
+[command NEW]
+names: NEW, N
+topic: rooms
+usage: N
+summary: read new
+example: N reads what is new in your current room.
+
+[command GOTO]
+names: GOTO, G
+topic: rooms
+usage: G
+summary: next unread
+example: G jumps to the next room with something new.
+
+[command READ]
+names: READ, R
+topic: rooms
+usage: R <room>
+summary: read it
+example: R general shows the latest posts.
+
+[command ENTER]
+names: ENTER, E
+topic: rooms
+usage: E <subject>
+summary: write; end with .
+example: E hello (then send your text, then a line with just a dot). Pick a room first with C.
+
+# ---------------------------------------------------------------- 2 mail
+[topic 2 mail]
+title: Mail
+aliases: letters, dm
+try: CHECKMAIL
+
+[command MAIL]
+names: MAIL
+topic: mail
+usage: MAIL <user>
+summary: send; end with .
+example: MAIL bob (then your text, then a line with just a dot). MAIL @name works for node names.
+
+[command MAILBOX]
+names: MAILBOX, INBOX
+topic: mail
+usage: MAILBOX
+summary: read
+example: MAILBOX shows your mail and marks it read.
+
+[command CHECKMAIL]
+names: CHECKMAIL, /CHECKMAIL, CM
+topic: mail
+usage: CHECKMAIL
+summary: count new
+example: CHECKMAIL tells you how many unread mails you have.
+
+[command THREAD]
+names: THREAD
+topic: mail
+usage: THREAD <user>
+summary: history
+example: THREAD bob shows the mail between you and bob.
+
+[command TELL]
+names: TELL, T
+topic: mail
+usage: TELL <user> <msg>
+summary: quick note
+example: TELL bob see you at 5
+
+# ---------------------------------------------------------------- 3 weather
+[topic 3 weather]
+title: Weather
+aliases: wx, news
+try: WX
+
+[command WX]
+names: WX, WEATHER
+topic: weather
+usage: WX
+summary: weather now
+example: WX gives Buffalo, WY conditions from the NWS.
+
+[command FORECAST]
+names: FORECAST, FC
+topic: weather
+usage: FORECAST [days]
+summary: outlook
+example: FORECAST 3 (1 to 7 days, default 3)
+
+[command ALERTS]
+names: ALERTS, ALERT
+topic: weather
+usage: ALERTS
+summary: NWS Sheridan/Johnson
+example: ALERTS lists active NWS alerts for Sheridan and Johnson County. CONFIG SET alerts off stops warning DMs.
+
+[command SPACEWX]
+names: SPACEWX, SW, SPACE
+topic: weather
+usage: SW
+summary: space weather
+example: SW gives solar and geomagnetic conditions.
+
+[command NEWS]
+names: NEWS
+topic: weather
+usage: NEWS
+summary: local news
+example: NEWS shows fresh local headlines.
+
+# ---------------------------------------------------------------- 4 fun
+[topic 4 fun]
+title: Fun
+aliases: games
+try: JOKE
+
+[command FORTUNE]
+names: FORTUNE, QOTD
+topic: fun
+usage: FORTUNE
+summary: a fortune
+example: FORTUNE
+
+[command ROLL]
+names: ROLL, DICE
+topic: fun
+usage: ROLL 2d6
+summary: roll dice
+example: ROLL 3d8 (count d sides)
+
+[command 8BALL]
+names: 8BALL, MAGIC8
+topic: fun
+usage: 8BALL <question>
+summary: ask
+example: 8BALL will it snow
+
+[command JOKE]
+names: JOKE
+topic: fun
+usage: JOKE
+summary: a joke
+example: JOKE
+
+# ---------------------------------------------------------------- 5 community
+[topic 5 community]
+title: Community
+aliases: polls, poll
+try: B
+
+[command ONELINER]
+names: ONELINER, O
+topic: community
+usage: O [text]
+summary: oneliners
+example: O lists the wall; O hello there adds a line.
+
+[command BULLETIN]
+names: BULLETIN, BULLETINS, B
+topic: community
+usage: B
+summary: bulletins
+example: B shows sysop announcements.
+
+[command POLL]
+names: POLL, POLLS
+topic: community
+usage: POLL [id]
+summary: polls
+example: POLL lists polls; POLL 2 shows one; POLL NEW question|a|b starts one.
+
+[command VOTE]
+names: VOTE, V
+topic: community
+usage: VOTE <id> <n>
+summary: vote
+example: VOTE 2 1 votes option 1 in poll 2.
+
+[command RESULTS]
+names: RESULTS
+topic: community
+usage: RESULTS <id>
+summary: tally
+example: RESULTS 2
+
+# ---------------------------------------------------------------- 6 account
+[topic 6 account]
+title: Account
+aliases: me, login
+try: /CONFIG
+
+[command CLAIM]
+names: CLAIM
+topic: account
+usage: CLAIM <name> <pass>
+summary: keep it
+example: CLAIM bob secret123 names your account so you can log in from any device.
+
+[command LOGIN]
+names: LOGIN
+topic: account
+usage: LOGIN <name> <pass>
+summary: sign in
+example: LOGIN bob secret123
+
+[command LOGOUT]
+names: LOGOUT, Q
+topic: account
+usage: Q
+summary: log out
+example: Q
+
+[command SETPASS]
+names: SETPASS
+topic: account
+usage: SETPASS <pass>
+summary: change it
+example: SETPASS newsecret
+
+[command CONFIG]
+names: CONFIG, /CONFIG
+topic: account
+usage: /CONFIG
+summary: preferences
+example: /CONFIG shows your settings. CONFIG SET key value, CONFIG ADDCMD name text, CONFIG CMDS, CONFIG PREFS.
+
+# ---------------------------------------------------------------- 7 tools
+[topic 7 tools]
+title: Tools
+aliases: boards, more
+
+[command LIST]
+names: LIST, L
+topic: tools
+usage: L
+summary: list boards
+example: L
+
+[command POST]
+names: POST, P
+topic: tools
+usage: P <room>|<subj>|<text>
+summary: quick post
+example: P general|Hi|Hello everyone
+
+[command WHO]
+names: WHO, W
+topic: tools
+usage: W
+summary: BBS info
+example: W
+
+[command STATS]
+names: STATS
+topic: tools
+usage: STATS
+summary: BBS stats
+example: STATS
+
+[command CHANNELS]
+names: CHANNELS, CHANDIR
+topic: tools
+usage: CHANNELS
+summary: mesh channels
+example: CHANNELS lists the channel directory.
+
+[command POLLCLOSE]
+names: POLLCLOSE
+topic: community
+usage: POLLCLOSE <id>
+summary: end a poll
+example: POLLCLOSE 2 closes your poll (or any poll, for staff).
+
+[command CHANADD]
+names: CHANADD
+topic: tools
+usage: CHANADD <n>|<d>|<i>
+summary: add one
+example: CHANADD Public|Main channel|join with the default key
+
+# ---------------------------------------------------------------- 8 people
+[topic 8 people]
+title: People
+aliases: users, profile
+
+[command LASTCALLERS]
+names: LASTCALLERS, CALLERS
+topic: people
+usage: CALLERS
+summary: recent callers
+example: CALLERS
+
+[command PROFILE]
+names: PROFILE
+topic: people
+usage: PROFILE <user>
+summary: see bio
+example: PROFILE bob
+
+[command SETBIO]
+names: SETBIO
+topic: people
+usage: SETBIO <text>
+summary: set bio
+example: SETBIO Rancher near Buffalo
+
+[command REGISTER]
+names: REGISTER
+topic: people
+usage: REGISTER <n> <p>
+summary: like CLAIM
+example: REGISTER bob secret123
+
+[command MENU]
+names: MENU, M
+topic: people
+usage: M
+summary: main menu
+example: M
+
+[command HELP]
+names: HELP, ?
+topic: people
+usage: HELP [topic]
+summary: help
+example: HELP 3, HELP MAIL, HELP ALL
+
+# ---------------------------------------------------------------- 9 staff
+[topic 9 staff]
+title: Staff
+aliases: aide, sysop, admin, mod
+perm: aide
+
+[command VERIFY]
+names: VERIFY
+topic: staff
+usage: VERIFY <u>
+summary: approve
+perm: aide
+example: VERIFY bob lets a new user post.
+
+[command PROMOTE]
+names: PROMOTE
+topic: staff
+usage: PROMOTE <u>
+summary: make aide
+perm: aide
+example: PROMOTE bob
+
+[command DEMOTE]
+names: DEMOTE
+topic: staff
+usage: DEMOTE <u>
+summary: back to user
+perm: aide
+example: DEMOTE bob
+
+[command TWIT]
+names: TWIT
+topic: staff
+usage: TWIT <u>
+summary: read-only
+perm: aide
+example: TWIT bob
+
+[command BAN]
+names: BAN
+topic: staff
+usage: BAN <u>
+summary: ban
+perm: aide
+example: BAN bob
+
+[command UNBAN]
+names: UNBAN
+topic: staff
+usage: UNBAN <u>
+summary: unban
+perm: aide
+example: UNBAN bob
+
+[command DELETE]
+names: DELETE, DEL
+topic: staff
+usage: DELETE <id>
+summary: delete a post
+perm: aide
+example: DELETE 42
+
+[command BULLET]
+names: BULLET
+topic: staff
+usage: BULLET <title>|<body>
+summary: post bulletin
+perm: sysop
+example: BULLET Road closed|Hwy 16 closed at the pass
+
+[command ALERTTEST]
+names: ALERTTEST
+topic: staff
+usage: ALERTTEST [CHAN|ALL|<node>]
+summary: test alert
+perm: sysop
+example: ALERTTEST sends a clearly marked TEST weather alert to you; CHAN to the public channel; ALL to everyone the real ones reach; or a node id.
+
+[command HELPRELOAD]
+names: HELPRELOAD
+topic: staff
+usage: HELPRELOAD
+summary: reload help
+perm: sysop
+example: HELPRELOAD re-reads the help text from its source without a restart.
+
+[command HELPIMPORT]
+names: HELPIMPORT
+topic: staff
+usage: HELPIMPORT
+summary: help file to db
+perm: sysop
+example: HELPIMPORT copies help.txt into the database; after that the database is the help source.

@@ -168,7 +168,7 @@ fn test_reannounced_after_alert_leaves_feed() {
 }
 
 fn test_alerts_command() {
-	assert 'ALERTS' in known_commands
+	assert standard_commands().find('ALERTS') != none
 }
 
 fn history_feature(id string, event string, severity string, same string, status string, mtype string, sent string, ends string) string {
@@ -318,7 +318,7 @@ fn test_alerttest_command_targets() {
 	assert e.handle('aa', 'ALERTTEST bogus!').contains('Usage')
 	assert e.handle('aa', 'ALERTTEST CHAN').contains('public channel')
 	assert e.handle('aa', 'ALERTTEST abcdef').contains('DM to abcdef')
-	assert 'ALERTTEST' in known_commands
+	assert standard_commands().find('ALERTTEST') != none
 }
 
 fn test_valid_node_prefix() {

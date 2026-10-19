@@ -30,6 +30,11 @@ fn main() {
 		min_turn_interval: 3 // seconds between accepted turns per node (mesh self-defense)
 		last_turn:         map[string]i64{}
 	}
+	// Help text comes from the database, ./help.txt, or the built-in file (in
+	// that order); see help_catalog.v. HELPRELOAD re-reads it without a restart.
+	help_renderer, help_source := load_help_renderer(mut engine.store, engine.help_file)
+	engine.help = help_renderer
+	println('Help text loaded from ${help_source}.')
 
 	// --- radio ---
 	println('meshbbs starting on ${port} (db=${db_cfg}) ...')
