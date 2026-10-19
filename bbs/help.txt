@@ -31,7 +31,7 @@ HELP ALL = every command
 No help for "{query}".
 
 [message welcome]
-Welcome to {bbs}! You are {who} (an account was made for you, no signup). Start here: 1) K lists the rooms 2) C general goes into one 3) N reads what is new. Send HELP any time for a guided menu.
+Welcome to {bbs}! You are {who} (an account was made for you, no signup). Start here: 1) R reads the general room 2) K lists rooms, C <room> switches 3) E <subject> posts. Send HELP any time for a guided menu.
 
 # ---------------------------------------------------------------- 1 rooms
 [topic 1 rooms]
@@ -70,16 +70,16 @@ example: G jumps to the next room with something new.
 [command READ]
 names: READ, R
 topic: rooms
-usage: R <room>
-summary: read it
-example: R general shows the latest posts.
+usage: R [room]
+summary: read
+example: R reads the room you are in (general to start). R lobby reads and switches to another room.
 
 [command ENTER]
 names: ENTER, E
 topic: rooms
 usage: E <subject>
 summary: write; end with .
-example: E hello (then send your text, then a line with just a dot). Pick a room first with C.
+example: E hello (then send your text, then a line with just a dot). You post in the room you are in (general to start); C <room> switches.
 
 # ---------------------------------------------------------------- 2 mail
 [topic 2 mail]

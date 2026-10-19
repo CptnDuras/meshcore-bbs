@@ -76,7 +76,78 @@ fn test_change_room_unknown() {
 fn test_new_without_room() {
 	mut e := nav_engine()
 	e.handle('aa', 'NEW sysop pw')
-	// fresh session, current_board 0
+	// fresh session: no room picked yet, so N works in the default room (general)
 	r := e.handle('aa', 'N')
-	assert r.contains('not in a room')
+	assert !r.contains('not in a room')
+	assert r.contains('No new messages') || r.contains('first')
+}
+
+fn test_read_without_a_room_uses_general_not_the_first_room() {
+	mut e := nav_engine() // lobby is created first, general second
+	e.handle('aa', 'NEW sysop pw')
+	e.handle('aa', 'POST general|Hi|hello general')
+	e.handle('aa', 'POST lobby|Yo|hello lobby')
+	r := e.handle('aa', 'R')
+	assert r.contains('== general ==')
+	assert r.contains('hello general')
+	assert !r.contains('hello lobby')
+}
+
+fn test_read_without_a_room_reads_the_current_room() {
+	mut e := nav_engine()
+	e.handle('aa', 'NEW sysop pw')
+	e.handle('aa', 'POST general|Hi|hello general')
+	e.handle('aa', 'POST lobby|Yo|hello lobby')
+	e.handle('aa', 'C lobby')
+	r := e.handle('aa', 'R')
+	assert r.contains('== lobby ==')
+	assert r.contains('hello lobby')
+}
+
+fn test_read_with_a_room_still_works_and_switches_rooms() {
+	mut e := nav_engine()
+	e.handle('aa', 'NEW sysop pw')
+	e.handle('aa', 'POST general|Hi|hello general')
+	e.handle('aa', 'POST lobby|Yo|hello lobby')
+	assert e.handle('aa', 'R lobby').contains('hello lobby')
+	// now in lobby: a bare R stays there
+	assert e.handle('aa', 'R').contains('== lobby ==')
+	// and back
+	assert e.handle('aa', 'R general').contains('hello general')
+	assert e.handle('aa', 'R').contains('== general ==')
+	assert e.handle('aa', 'R nowhere').contains('No such room')
+}
+
+fn test_post_without_picking_a_room_goes_to_general() {
+	mut e := nav_engine()
+	e.handle('aa', 'NEW sysop pw')
+	assert e.handle('aa', 'E first post').contains('. alone')
+	e.handle('aa', 'body of it')
+	e.handle('aa', '.')
+	assert e.handle('aa', 'R general').contains('body of it')
+	assert !e.handle('aa', 'R lobby').contains('body of it')
+}
+
+fn test_default_room_falls_back_to_the_first_room_without_general() {
+	mut store := new_store('sqlite::memory:') or { panic(err) }
+	store.migrate() or {}
+	store.ensure_board('cafe', 'Cafe') or {}
+	mut e := Engine{
+		store: store
+		name:  'nogeneral'
+	}
+	e.handle('aa', 'NEW sysop pw')
+	e.handle('aa', 'POST cafe|Hi|latte')
+	assert e.handle('aa', 'R').contains('== cafe ==')
+}
+
+fn test_read_with_no_rooms_at_all() {
+	mut store := new_store('sqlite::memory:') or { panic(err) }
+	store.migrate() or {}
+	mut e := Engine{
+		store: store
+		name:  'empty'
+	}
+	e.handle('aa', 'NEW sysop pw')
+	assert e.handle('aa', 'R').contains('No rooms yet')
 }

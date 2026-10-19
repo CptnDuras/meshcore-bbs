@@ -316,10 +316,15 @@ fn (mut e Engine) list_boards() string {
 }
 
 fn (mut e Engine) read_board(mut sess Session, name string) string {
-	if name.len == 0 {
-		return 'Usage: READ <board>'
+	// R alone reads the room you are in (general until you pick another)
+	if name.trim_space().len == 0 && !e.ensure_room(mut sess) {
+		return 'No rooms yet.'
 	}
-	board := e.store.get_board(name) or { return 'No such board: ${name}' }
+	board := if name.trim_space().len == 0 {
+		e.room_by_id(sess.current_board) or { return 'No such room. K lists the rooms.' }
+	} else {
+		e.store.get_board(name.trim_space()) or { return 'No such room: ${name}. K lists the rooms.' }
+	}
 	msgs := e.store.board_messages(board.id, 20)
 	sess.state = state_reading
 	sess.current_board = board.id

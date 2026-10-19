@@ -43,8 +43,8 @@ fn (mut e Engine) change_room(mut sess Session, name string) string {
 // new_messages shows unread messages in the current room and advances the
 // read pointer to the newest shown.
 fn (mut e Engine) new_messages(mut sess Session) string {
-	if sess.current_board == 0 {
-		return 'You are not in a room. Use C <room> or K to list.'
+	if !e.ensure_room(mut sess) {
+		return 'No rooms yet.'
 	}
 	user := e.current_user(sess) or {
 		return 'Log in to track new messages (or use READ <room>).'
@@ -95,4 +95,36 @@ fn (mut e Engine) goto_next_unread(mut sess Session) string {
 	// none: go to first room (Lobby-ish)
 	sess.current_board = boards[0].id
 	return 'No unread messages. Back in ${boards[0].name}.'
+}
+
+// default_room is where a user lands when they have not picked a room.
+const default_room = 'general'
+
+// ensure_room puts a session that is in no room into the default room
+// (general, or the first room if general does not exist). Returns false only
+// when the BBS has no rooms at all.
+fn (mut e Engine) ensure_room(mut sess Session) bool {
+	if sess.current_board != 0 {
+		return true
+	}
+	b := e.store.get_board(default_room) or {
+		boards := e.store.list_boards()
+		if boards.len == 0 {
+			return false
+		}
+		boards[0]
+	}
+	sess.current_board = b.id
+	sess.state = state_reading
+	return true
+}
+
+// room_by_id finds a room by id (the session stores the id of the current room).
+fn (mut e Engine) room_by_id(id int) ?Board {
+	for b in e.store.list_boards() {
+		if b.id == id {
+			return b
+		}
+	}
+	return none
 }

@@ -393,9 +393,9 @@ fn test_welcome_is_a_three_step_start() {
 	w := builtin_service().welcome('meshbbs', 'guest-ab12')
 	assert w.contains('Welcome to meshbbs')
 	assert w.contains('guest-ab12')
-	assert w.contains('1) K')
-	assert w.contains('2) C general')
-	assert w.contains('3) N')
+	assert w.contains('1) R')
+	assert w.contains('2) K')
+	assert w.contains('3) E')
 	assert w.contains('HELP')
 }
 

@@ -58,8 +58,8 @@ fn (mut e Engine) start_entry(mut sess Session, subject string) string {
 	if !has_permission(user, 'enter') {
 		return 'You are not verified yet; you cannot post.'
 	}
-	if sess.current_board == 0 {
-		return 'Select a room first (C <room>).'
+	if !e.ensure_room(mut sess) {
+		return 'No rooms yet.'
 	}
 	sess.entry_mode = 'post'
 	sess.entry_buffer = ''
