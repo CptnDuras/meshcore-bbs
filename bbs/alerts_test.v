@@ -107,6 +107,7 @@ fn test_alerts_report_text() {
 
 fn test_process_publishes_once_and_dms_only_warnings() {
 	mut e := alert_engine()
+	e.store.alert_set('alert_scope', 'public') or { panic(err) }
 	e.handle('aa', 'HELP') // creates sessions for two nodes
 	e.handle('bb', 'HELP')
 	body := alerts_body([
@@ -136,6 +137,7 @@ fn test_process_publishes_once_and_dms_only_warnings() {
 
 fn test_opt_out_skips_dm() {
 	mut e := alert_engine()
+	e.store.alert_set('alert_scope', 'public') or { panic(err) }
 	e.handle('aa', 'HELP')
 	e.handle('bb', 'HELP')
 	e.store.set_pref(node_handle('aa'), 'alerts', 'off') or { panic(err) }
@@ -154,6 +156,7 @@ fn test_opt_out_skips_dm() {
 
 fn test_reannounced_after_alert_leaves_feed() {
 	mut e := alert_engine()
+	e.store.alert_set('alert_scope', 'public') or { panic(err) }
 	body := alerts_body([
 		alert_feature('a', 'Flood Warning', 'Severe', '"056033"', 'Actual', '2026-10-19T23:00:00-06:00'),
 	])
@@ -168,42 +171,102 @@ fn test_alerts_command() {
 	assert 'ALERTS' in known_commands
 }
 
-fn test_alerttest_sysop_only() {
+fn history_feature(id string, event string, severity string, same string, status string, mtype string, sent string, ends string) string {
+	return '{"id":"${id}","properties":{"id":"${id}","event":"${event}","severity":"${severity}","status":"${status}",' +
+		'"messageType":"${mtype}","sent":"${sent}","expires":"${ends}","ends":"${ends}","geocode":{"SAME":[${same}]}}}'
+}
+
+fn test_pick_example_prefers_latest_warning_even_if_expired() {
+	body := alerts_body([
+		history_feature('a', 'Freeze Watch', 'Severe', '"056033"', 'Actual', 'Alert', '2026-10-16T08:00:00-06:00', '2026-10-16T09:00:00-06:00'),
+		history_feature('b', 'Freeze Warning', 'Severe', '"056033","056019"', 'Actual', 'Alert', '2026-10-15T12:23:00-06:00', '2026-10-16T09:00:00-06:00'),
+		history_feature('c', 'Flood Warning', 'Severe', '"056005"', 'Actual', 'Alert', '2026-10-17T12:00:00-06:00', '2026-10-17T20:00:00-06:00'),
+		history_feature('d', 'Winter Storm Warning', 'Severe', '"056019"', 'Actual', 'Alert', '2026-09-01T12:00:00-06:00', '2026-09-02T09:00:00-06:00'),
+	])
+	a := pick_example_alert(body) or {
+		assert false, 'no example'
+		return
+	}
+	assert a.event == 'Freeze Warning'
+	assert a.sent_s == 'Thu 12:23PM'
+	assert county_label(a.counties) == 'Sheridan+Johnson Co'
+	if _ := pick_example_alert(alerts_body([])) {
+		assert false, 'should be none'
+	}
+}
+
+fn test_test_messages_wrap_real_alert_or_sample() {
+	body := alerts_body([
+		history_feature('b', 'Freeze Warning', 'Severe', '"056033"', 'Actual', 'Alert', '2026-10-15T12:23:00-06:00', '2026-10-16T09:00:00-06:00'),
+	])
+	m := alert_test_messages(body)
+	assert m.len == 3
+	assert m[0].starts_with('*** TEST ***')
+	assert m[1].contains('replay of the real alert NWS sent Thu 12:23PM')
+	assert m[1].contains('NWS ALERT FREEZE WARNING - Sheridan Co WY until Fri 9AM')
+	assert m[2].starts_with('*** END OF TEST ***')
+	f := alert_test_messages('')
+	assert f[1].contains('made-up sample')
+}
+
+fn test_default_scope_is_restricted_to_test_node_only() {
+	mut e := alert_engine()
+	e.handle('aa', 'HELP')
+	e.handle('bb', 'HELP')
+	body := alerts_body([
+		alert_feature('a', 'Tornado Warning', 'Extreme', '"056033"', 'Actual', '2026-10-19T06:00:00-06:00'),
+		alert_feature('b', 'Wind Advisory', 'Moderate', '"056019"', 'Actual', '2026-10-19T06:00:00-06:00'),
+	])
+	assert e.process_alerts(body, now_ts) == 2
+	e.alert_test_to(true, '')
+	e.alert_test_to(false, '')
+	out := e.store.pending_outbound(100)
+	assert out.len == 2 + 3 + 3
+	for m in out {
+		assert m.target_kind == target_dm
+		assert m.target == alert_default_test_node
+	}
+}
+
+fn test_web_request_follows_scope() {
+	mut e := alert_engine()
+	e.handle('aa', 'HELP')
+	e.handle('bb', 'HELP')
+	req := [AlertRequest{
+		id: 1
+	}]
+	e.handle_alert_requests_with(req, '')
+	out := e.store.pending_outbound(100)
+	assert out.len == 3
+	for m in out {
+		assert m.target == alert_default_test_node
+	}
+	e.store.alert_set('alert_scope', 'public') or { panic(err) }
+	e.handle_alert_requests_with(req, '')
+	all := e.store.pending_outbound(100)
+	// restricted run (3) + public run: 3 channel + 2 sessions x 3 DMs
+	assert all.len == 3 + 3 + 6
+}
+
+fn test_alert_requests_roundtrip() {
+	mut e := alert_engine()
+	assert e.store.alert_requests_pending().len == 0
+	// the web UI inserts rows like this
+	e.store.alert_set('x', '1') or { panic(err) }
+	assert (e.store.alert_get('x') or { '' }) == '1'
+	e.store.alert_set('x', '2') or { panic(err) }
+	assert (e.store.alert_get('x') or { '' }) == '2'
+	if _ := e.store.alert_get('nope') {
+		assert false, 'should be none'
+	}
+}
+
+fn test_alerttest_sysop_only_and_test_node_default() {
 	mut e := alert_engine()
 	e.handle('aa', 'HELP') // first account = sysop
 	e.handle('bb', 'HELP') // ordinary user
 	assert e.handle('bb', 'ALERTTEST').contains('sysops only')
 	assert e.store.count_outbound_pending() == 0
-}
-
-fn test_alerttest_default_dm_to_sysop_with_pre_and_post() {
-	mut e := alert_engine()
-	e.handle('aa', 'HELP')
-	e.handle('bb', 'HELP')
-	assert e.handle('aa', 'ALERTTEST').contains('Test alert queued')
-	out := e.store.pending_outbound(100)
-	assert out.len == 3
-	for m in out {
-		assert m.target_kind == target_dm
-		assert m.target == 'aa'
-	}
-	assert out[0].text.starts_with('*** TEST ***')
-	assert out[1].text.starts_with('TEST: NWS ALERT TORNADO WARNING')
-	assert out[2].text.starts_with('*** END OF TEST ***')
-}
-
-fn test_alerttest_chan_and_all() {
-	mut e := alert_engine()
-	e.handle('aa', 'HELP')
-	e.handle('bb', 'HELP')
-	e.handle('aa', 'ALERTTEST CHAN')
-	mut out := e.store.pending_outbound(100)
-	assert out.len == 3
-	for m in out {
-		assert m.target_kind == target_chan
-	}
-	e.handle('aa', 'ALERTTEST ALL')
-	out = e.store.pending_outbound(100)
-	assert out.len == 3 + 3 + 6 // earlier chan test + chan + 2 users x 3 DMs
 	assert e.handle('aa', 'ALERTTEST bogus').contains('Usage')
+	assert 'ALERTTEST' in known_commands
 }

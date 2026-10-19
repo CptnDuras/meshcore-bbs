@@ -118,6 +118,10 @@ mut:
 	// weather alerts already announced (deduped by event + counties)
 	alert_key_touch(key string, now i64) bool
 	alert_keys_prune(before i64) !
+	alert_get(key string) ?string
+	alert_set(key string, val string) !
+	alert_requests_pending() []AlertRequest
+	alert_request_done(id int, note string) !
 	// proactive mail-notice guard
 	get_mail_notice(handle string) ?MailNotice
 	record_mail_notice(handle string, count int, now i64) !
@@ -189,6 +193,8 @@ pub fn (mut s SqliteStore) migrate() ! {
 		create table UserPref
 		create table MailNotice
 		create table WxAlertSent
+		create table AlertSetting
+		create table AlertRequest
 		create table MqttSetting
 		create table MqttBroker
 		create table MqttStatus
@@ -206,7 +212,7 @@ pub fn (mut s SqliteStore) migrate() ! {
 // add_column_if_missing adds a column to a table only when it does not already
 // exist, using PRAGMA table_info to check. No-op if the table is absent.
 fn (mut s SqliteStore) add_column_if_missing(table string, column string, decl string) ! {
-	info := s.db.exec("PRAGMA table_info(${table})") or { return }
+	info := s.db.exec('PRAGMA table_info(${table})') or { return }
 	for row in info {
 		// PRAGMA table_info columns: cid, name, type, notnull, dflt_value, pk
 		if row.vals.len > 1 && row.vals[1] == column {
@@ -1362,4 +1368,46 @@ pub fn (mut s SqliteStore) list_sessions() []Session {
 	return sql s.db {
 		select from Session
 	} or { []Session{} }
+}
+
+pub fn (mut s SqliteStore) alert_get(key string) ?string {
+	rows := sql s.db {
+		select from AlertSetting where key == key limit 1
+	} or { return none }
+	if rows.len == 0 {
+		return none
+	}
+	return rows[0].val
+}
+
+pub fn (mut s SqliteStore) alert_set(key string, val string) ! {
+	rows := sql s.db {
+		select from AlertSetting where key == key limit 1
+	} or { []AlertSetting{} }
+	if rows.len == 0 {
+		row := AlertSetting{
+			key: key
+			val: val
+		}
+		sql s.db {
+			insert row into AlertSetting
+		}!
+	} else {
+		id := rows[0].id
+		sql s.db {
+			update AlertSetting set val = val where id == id
+		}!
+	}
+}
+
+pub fn (mut s SqliteStore) alert_requests_pending() []AlertRequest {
+	return sql s.db {
+		select from AlertRequest where done == false order by id limit 10
+	} or { []AlertRequest{} }
+}
+
+pub fn (mut s SqliteStore) alert_request_done(id int, note string) ! {
+	sql s.db {
+		update AlertRequest set done = true, note = note where id == id
+	}!
 }

@@ -439,7 +439,7 @@ fn (mut e Engine) help(sess Session) string {
 		b += 'AIDE: VERIFY <u>  PROMOTE/DEMOTE/TWIT <u>  BAN/UNBAN <u>  DELETE <id>\n'
 	}
 	if perm_from_int(u.perm) == Perm.sysop {
-		b += 'SYSOP: BULLET <title>|<body>  ALERTTEST [CHAN|ALL]\n'
+		b += 'SYSOP: BULLET <title>|<body>  ALERTTEST [ALL]\n'
 	}
 	return b
 }

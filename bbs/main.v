@@ -237,6 +237,9 @@ fn main() {
 			engine.poll_alerts(now)
 		}
 
+		// Test-alert clicks from the web UI.
+		engine.handle_alert_requests()
+
 		// Refresh the node-name map from the radio's contact list every 15 min.
 		if now - last_contact_sync >= contact_sync_interval {
 			contact_refresh()

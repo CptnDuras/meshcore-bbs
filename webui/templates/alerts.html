@@ -1,0 +1,81 @@
+@include 'header.html'
+<h2>Weather alerts</h2>
+<p class="muted">NWS alerts for Sheridan and Johnson County, WY, polled from api.weather.gov every 2 minutes.
+New alerts go to the public channel; Warning-level and above are also DMed to everyone who has used the BBS.
+Sysops can send a test with <code>ALERTTEST</code> from the BBS.</p>
+
+@if msg.len > 0
+	<p style="color:var(--good)"><strong>@{h(msg)}</strong></p>
+@end
+
+@if !page.available
+	<p><em>The alert tables do not exist yet. Restart the meshbbs daemon once (it creates them on startup), then reload this page.</em></p>
+@else
+
+<fieldset>
+	<legend>NWS subscription</legend>
+	@if !page.polled
+		<p><strong>Not polled yet.</strong> The daemon has not run the alert poller (restart it with the alerts build).</p>
+	@else
+		<p>Last poll: <strong>@{h(page.last_poll)}</strong> (@{h(page.poll_age)}) &mdash;
+		@if page.poll_ok
+			<span style="color:var(--good)"><strong>OK</strong></span>
+		@else
+			<span style="color:var(--bad)"><strong>FAILED</strong> (will retry)</span>
+		@end
+		<br>Active alerts for Sheridan/Johnson Co right now: <strong>@{h(page.last_active)}</strong></p>
+	@end
+	<small>NWS offers no push/webhook for this API, so the daemon polls the active-alerts feed for Wyoming
+	and keeps those covering counties 56033 (Sheridan) and 56019 (Johnson). Each alert is announced once.</small>
+</fieldset>
+
+<fieldset>
+	<legend>Who gets alerts</legend>
+	@if page.public
+		<p><strong style="color:var(--bad)">PUBLIC</strong> &mdash; real alerts go to the public channel; Warning-level alerts are also DMed to everyone who has used the BBS (except people who ran <code>CONFIG SET alerts off</code>).</p>
+		<form method="post" action="/alerts/scope">
+			<input type="hidden" name="scope" value="restricted">
+			<button type="submit">Restrict to test node only</button>
+		</form>
+	@else
+		<p><strong>RESTRICTED</strong> &mdash; every alert (real or test) is sent only as a DM to
+		<strong>@{h(page.node_name)}</strong> (<code>@{h(page.test_node)}</code>). Nothing goes to the public channel or any other node.</p>
+		<form method="post" action="/alerts/scope" onsubmit="return confirm('Make weather alerts PUBLIC? Real alerts will go to the public channel and DM everyone.')">
+			<input type="hidden" name="scope" value="public">
+			<label><input type="checkbox" name="confirm" value="yes"> I understand this goes to the public channel and all users</label>
+			<button type="submit">Go public</button>
+		</form>
+	@end
+</fieldset>
+
+<fieldset>
+	<legend>Send a test alert</legend>
+	<p>Sends a <strong>real past alert</strong> (the most recent Warning NWS issued for Sheridan/Johnson in the last 60 days),
+	wrapped in a &ldquo;*** TEST ***&rdquo; message before and an &ldquo;*** END OF TEST ***&rdquo; message after, to
+	@if page.public
+		<strong>the public channel and all users</strong> (scope is PUBLIC).
+	@else
+		<strong>@{h(page.node_name)}</strong> only.
+	@end
+	</p>
+	<form method="post" action="/alerts/test">
+		<button type="submit">Send test alert</button>
+	</form>
+	@if page.pending > 0
+		<p class="muted">A test is waiting for the daemon&hellip;</p>
+	@end
+	@if page.recent.len > 0
+		<table>
+			<tr><th>Requested</th><th>Status</th><th>Sent to</th></tr>
+			@for r in page.recent
+				<tr><td>@{r.when}</td><td>@if r.done
+					done
+				@else
+					waiting
+				@end</td><td>@{h(r.note)}</td></tr>
+			@end
+		</table>
+	@end
+</fieldset>
+@end
+@include 'footer.html'

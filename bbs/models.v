@@ -18,7 +18,7 @@ pub mut:
 	perm      int    // Perm level: 0=unverified 1=twit 2=user 3=aide 4=sysop
 	banned    bool
 	bio       string
-	created   i64    // epoch secs
+	created   i64 // epoch secs
 	last_seen i64
 }
 
@@ -34,13 +34,13 @@ pub mut:
 @[table: 'bbs_messages']
 pub struct BbsMessage {
 pub mut:
-	id          int    @[primary; sql: serial]
-	board_id    int
-	author      string // handle, or pubkey prefix for guests (guests can't post in v1)
-	subject     string
-	body        string
-	posted      i64
-	reply_to    int // 0 = top-level, else parent message id
+	id       int @[primary; sql: serial]
+	board_id int
+	author   string // handle, or pubkey prefix for guests (guests can't post in v1)
+	subject  string
+	body     string
+	posted   i64
+	reply_to int // 0 = top-level, else parent message id
 }
 
 // Session persists a node's place in the BBS between mesh turns (messages can
@@ -66,12 +66,12 @@ pub mut:
 @[table: 'mail']
 pub struct Mail {
 pub mut:
-	id        int    @[primary; sql: serial]
-	to_handle string
+	id          int @[primary; sql: serial]
+	to_handle   string
 	from_handle string
-	body      string
-	sent      i64
-	is_read   bool
+	body        string
+	sent        i64
+	is_read     bool
 }
 
 @[table: 'last_read']
@@ -87,7 +87,7 @@ pub mut:
 @[table: 'oneliners']
 pub struct Oneliner {
 pub mut:
-	id     int    @[primary; sql: serial]
+	id     int @[primary; sql: serial]
 	author string
 	text   string
 	posted i64
@@ -97,10 +97,10 @@ pub mut:
 @[table: 'bulletins']
 pub struct Bulletin {
 pub mut:
-	id      int    @[primary; sql: serial]
-	title   string
-	body    string
-	posted  i64
+	id     int @[primary; sql: serial]
+	title  string
+	body   string
+	posted i64
 }
 
 // Poll: an interactive vote. Options are stored as a newline-separated list in
@@ -109,12 +109,12 @@ pub mut:
 @[table: 'polls']
 pub struct Poll {
 pub mut:
-	id       int    @[primary; sql: serial]
+	id       int @[primary; sql: serial]
 	question string
 	options  string // '\n'-joined option texts, index 1..N as shown to users
 	author   string // handle of creator
 	created  i64
-	closed   bool   // when true, no more votes are accepted
+	closed   bool // when true, no more votes are accepted
 }
 
 // PollVote: one vote by one voter (pubkey prefix) on one poll. The unique
@@ -122,7 +122,7 @@ pub mut:
 @[table: 'poll_votes']
 pub struct PollVote {
 pub mut:
-	id      int    @[primary; sql: serial]
+	id      int @[primary; sql: serial]
 	poll_id int
 	voter   string // pubkey prefix (works for guests and users alike)
 	choice  int    // 1-based option index
@@ -136,7 +136,7 @@ pub mut:
 @[table: 'interactions']
 pub struct Interaction {
 pub mut:
-	id            int    @[primary; sql: serial]
+	id            int @[primary; sql: serial]
 	ts            i64    // epoch secs when handled
 	pubkey_prefix string // sender node identity
 	handle        string // resolved user handle, or '' for guest
@@ -178,7 +178,7 @@ pub mut:
 @[table: 'mesh_traffic']
 pub struct MeshTraffic {
 pub mut:
-	id            int    @[primary; sql: serial]
+	id            int @[primary; sql: serial]
 	ts            i64    // when observed (epoch secs)
 	kind          string // event type: advert / path / ack / chan_msg / dm / ...
 	pubkey_prefix string // source node if known, else ''
@@ -191,7 +191,7 @@ pub mut:
 @[table: 'user_macros']
 pub struct UserMacro {
 pub mut:
-	id      int    @[primary; sql: serial]
+	id      int @[primary; sql: serial]
 	owner   string // handle that owns the macro
 	name    string // command name (upper-cased), unique per owner
 	text    string // reply text
@@ -202,7 +202,7 @@ pub mut:
 @[table: 'user_prefs']
 pub struct UserPref {
 pub mut:
-	id    int    @[primary; sql: serial]
+	id    int @[primary; sql: serial]
 	owner string
 	key   string
 	val   string
@@ -230,6 +230,28 @@ pub mut:
 	key       string @[unique]
 	sent      i64
 	last_seen i64
+}
+
+// AlertSetting is a key/value row shared with the web UI. Keys: alert_scope
+// (restricted|public), alert_test_node, plus daemon status (last_poll,
+// last_poll_ok, last_active).
+@[table: 'alert_settings']
+pub struct AlertSetting {
+pub mut:
+	id  int    @[primary; sql: serial]
+	key string @[unique]
+	val string
+}
+
+// AlertRequest is a "send a test alert" click from the web UI; the daemon
+// (sole owner of the radio) picks it up, queues the messages and marks it done.
+@[table: 'alert_requests']
+pub struct AlertRequest {
+pub mut:
+	id        int @[primary; sql: serial]
+	requested i64
+	done      bool
+	note      string
 }
 
 // SentHeadline records a news headline already broadcast, so news aging can
@@ -269,7 +291,7 @@ pub const src_forecast = 'forecast'
 @[table: 'outbound_messages']
 pub struct OutboundMessage {
 pub mut:
-	id          int    @[primary; sql: serial]
+	id          int @[primary; sql: serial]
 	target_kind string // target_chan | target_dm
 	target      string // channel index (as string) or node pubkey prefix
 	text        string
@@ -286,7 +308,7 @@ pub mut:
 @[table: 'scheduled_messages']
 pub struct ScheduledMessage {
 pub mut:
-	id            int    @[primary; sql: serial]
+	id            int @[primary; sql: serial]
 	target_kind   string // target_chan | target_dm
 	target        string // channel index or node pubkey prefix
 	text          string
@@ -319,7 +341,7 @@ pub mut:
 @[table: 'mqtt_brokers']
 pub struct MqttBroker {
 pub mut:
-	id        int    @[primary; sql: serial]
+	id        int @[primary; sql: serial]
 	name      string
 	enabled   bool
 	host      string
@@ -337,8 +359,8 @@ pub mut:
 @[table: 'mqtt_status']
 pub struct MqttStatus {
 pub mut:
-	id         int    @[primary; sql: serial]
-	broker_id  int    @[unique]
+	id         int @[primary; sql: serial]
+	broker_id  int @[unique]
 	state      string // connecting | connected | error | stopped
 	last_error string
 	published  i64
@@ -352,7 +374,7 @@ pub mut:
 @[table: 'mqtt_log']
 pub struct MqttLog {
 pub mut:
-	id      int    @[primary; sql: serial]
+	id      int @[primary; sql: serial]
 	ts      i64
 	kind    string
 	broker  string // broker name, '' when not about one broker
