@@ -160,6 +160,9 @@ fn (mut e Engine) dispatch(mut sess Session, line string) string {
 			days := if args.trim_space().len > 0 { args.trim_space().int() } else { forecast_default_days }
 			return fetch_forecast(days)
 		}
+		'ALERTTEST' {
+			return e.alert_test(sess, args)
+		}
 		'ALERTS', 'ALERT' {
 			return fetch_alerts_report()
 		}
@@ -323,7 +326,7 @@ const known_commands = ['HELP', 'MENU', 'WHO', 'WX', 'FORECAST', 'SPACEWX', 'NEW
 	'READ', 'POST', 'NEW', 'CLAIM', 'SETPASS', 'LOGIN', 'LOGOUT', 'KNOWN', 'CHANGE', 'GOTO',
 	'ENTER', 'MAIL', 'MAILBOX', 'CHECKMAIL', 'THREAD', 'ONELINER', 'BULLETIN', 'POLL', 'VOTE', 'RESULTS', 'PROFILE',
 	'SETBIO', 'CHANNELS', 'CHANADD', 'STATS', 'FORTUNE', 'ROLL', '8BALL', 'JOKE', 'CONFIG',
-	'TELL', 'CALLERS', 'ALERTS']
+	'TELL', 'CALLERS', 'ALERTS', 'ALERTTEST']
 
 // suggest_command returns the closest known command to `cmd` if one is within a
 // small edit distance (a simple typo helper), else none.
@@ -436,7 +439,7 @@ fn (mut e Engine) help(sess Session) string {
 		b += 'AIDE: VERIFY <u>  PROMOTE/DEMOTE/TWIT <u>  BAN/UNBAN <u>  DELETE <id>\n'
 	}
 	if perm_from_int(u.perm) == Perm.sysop {
-		b += 'SYSOP: BULLET <title>|<body>\n'
+		b += 'SYSOP: BULLET <title>|<body>  ALERTTEST [CHAN|ALL]\n'
 	}
 	return b
 }

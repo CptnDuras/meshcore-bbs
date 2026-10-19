@@ -167,3 +167,43 @@ fn test_reannounced_after_alert_leaves_feed() {
 fn test_alerts_command() {
 	assert 'ALERTS' in known_commands
 }
+
+fn test_alerttest_sysop_only() {
+	mut e := alert_engine()
+	e.handle('aa', 'HELP') // first account = sysop
+	e.handle('bb', 'HELP') // ordinary user
+	assert e.handle('bb', 'ALERTTEST').contains('sysops only')
+	assert e.store.count_outbound_pending() == 0
+}
+
+fn test_alerttest_default_dm_to_sysop_with_pre_and_post() {
+	mut e := alert_engine()
+	e.handle('aa', 'HELP')
+	e.handle('bb', 'HELP')
+	assert e.handle('aa', 'ALERTTEST').contains('Test alert queued')
+	out := e.store.pending_outbound(100)
+	assert out.len == 3
+	for m in out {
+		assert m.target_kind == target_dm
+		assert m.target == 'aa'
+	}
+	assert out[0].text.starts_with('*** TEST ***')
+	assert out[1].text.starts_with('TEST: NWS ALERT TORNADO WARNING')
+	assert out[2].text.starts_with('*** END OF TEST ***')
+}
+
+fn test_alerttest_chan_and_all() {
+	mut e := alert_engine()
+	e.handle('aa', 'HELP')
+	e.handle('bb', 'HELP')
+	e.handle('aa', 'ALERTTEST CHAN')
+	mut out := e.store.pending_outbound(100)
+	assert out.len == 3
+	for m in out {
+		assert m.target_kind == target_chan
+	}
+	e.handle('aa', 'ALERTTEST ALL')
+	out = e.store.pending_outbound(100)
+	assert out.len == 3 + 3 + 6 // earlier chan test + chan + 2 users x 3 DMs
+	assert e.handle('aa', 'ALERTTEST bogus').contains('Usage')
+}

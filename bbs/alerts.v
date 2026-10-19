@@ -213,3 +213,68 @@ fn (mut e Engine) poll_alerts(now i64) {
 	}
 	e.process_alerts(body, now)
 }
+
+// --- test mode ---------------------------------------------------------------
+//
+// ALERTTEST (sysop only) sends a sample Warning-level alert wrapped in a
+// pre-message and a post-message that say it is a test, so nobody mistakes it
+// for the real thing. Where it goes:
+//   ALERTTEST        DM to the sysop who asked (default; safe)
+//   ALERTTEST CHAN   public channel only
+//   ALERTTEST ALL    public channel + DM to every node that gets real alerts
+const alert_test_pre = '*** TEST *** This is a TEST of the meshbbs emergency weather alert system. No action needed.'
+const alert_test_post = '*** END OF TEST *** That was only a TEST of the meshbbs emergency weather alert system.'
+
+fn alert_test_messages() []string {
+	sample := LocalAlert{
+		event:    'Tornado Warning'
+		counties: ['Sheridan', 'Johnson']
+		until_s:  'now+1h'
+		urgent:   true
+	}
+	return [alert_test_pre, 'TEST: ' + format_alert(sample), alert_test_post]
+}
+
+fn (mut e Engine) alert_test(sess Session, args string) string {
+	user := e.current_user(sess) or { return 'No account.' }
+	if !has_permission(user, 'broadcast') {
+		return 'ALERTTEST is for sysops only.'
+	}
+	scope := args.trim_space().to_upper()
+	if scope !in ['', 'CHAN', 'ALL'] {
+		return 'Usage: ALERTTEST (DM to you) | ALERTTEST CHAN | ALERTTEST ALL'
+	}
+	msgs := alert_test_messages()
+	mut sent := []string{}
+	if scope == 'CHAN' || scope == 'ALL' {
+		for m in msgs {
+			e.store.enqueue_outbound(target_chan, alerts_channel, m) or { return 'Failed: ${err}' }
+		}
+		sent << 'channel'
+	}
+	match scope {
+		'ALL' {
+			mut n := 0
+			for s in e.store.list_sessions() {
+				if s.pubkey_prefix.len == 0 || !e.wants_alert_dm(s) {
+					continue
+				}
+				for m in msgs {
+					e.store.enqueue_outbound(target_dm, s.pubkey_prefix, m) or { continue }
+				}
+				n++
+			}
+			sent << '${n} DM(s)'
+		}
+		'' {
+			for m in msgs {
+				e.store.enqueue_outbound(target_dm, sess.pubkey_prefix, m) or {
+					return 'Failed: ${err}'
+				}
+			}
+			sent << 'DM to you'
+		}
+		else {}
+	}
+	return 'Test alert queued (pre, alert, post) -> ${sent.join(' + ')}.'
+}
