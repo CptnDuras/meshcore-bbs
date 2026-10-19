@@ -121,7 +121,7 @@ fn test_login_success_and_failure() {
 
 fn test_help_menu_list_unknown() {
 	mut e := new_test_engine()
-	assert e.handle('zz', 'HELP').contains('Commands')
+	assert e.handle('zz', 'HELP').contains('reply with a number')
 	assert e.handle('zz', 'MENU').contains('testbbs')
 	assert e.handle('zz', 'LIST').contains('general')
 	assert e.handle('zz', 'FLERB').contains('Unknown command')

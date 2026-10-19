@@ -20,6 +20,8 @@ pub mut:
 	// public-channel slash command limits (see chancmd.v)
 	chan_cmd_last   map[string]i64
 	chan_cmd_recent []i64
+	// help is injected so the wording or lookup can be swapped (see help.v)
+	help HelpRenderer = default_help_renderer()
 }
 
 // handle processes one inbound line from a node and returns reply text.
@@ -90,8 +92,16 @@ pub fn (mut e Engine) handle(pubkey_prefix string, raw string) string {
 // the auto-register model and points at HELP and /config in a friendly, terse
 // way suited to the mesh.
 fn (e Engine) greeting(sess Session) string {
-	name := display_name(sess.handle)
-	return 'Welcome to ${e.name}! You are ${name} — an account was created for you automatically, no signup needed. Send HELP for commands, or /CONFIG to customize. To keep your identity across devices: CLAIM <handle> <password>.'
+	return e.help.welcome(e.name, display_name(sess.handle))
+}
+
+// help_viewer describes the asker to the help system (permission + newness).
+fn (mut e Engine) help_viewer(sess Session) SessionViewer {
+	u := e.current_user(sess) or { User{} }
+	return SessionViewer{
+		level: perm_from_int(u.perm)
+		fresh: !sess.greeted
+	}
 }
 
 // interaction_command extracts the leading command token (upper-cased) from an
@@ -145,10 +155,17 @@ fn (mut e Engine) dispatch(mut sess Session, line string) string {
 		return e.register(mut sess, args)
 	}
 
+	// A bare digit is a pick from the help menu ("1" == "HELP 1").
+	if args.len == 0 {
+		if text := e.help.topic_for_digit(cmd, e.help_viewer(sess)) {
+			return text
+		}
+	}
+
 	// --- commands available to everyone ---
 	match cmd {
 		'HELP', '?' {
-			return e.help(sess)
+			return e.help_reply(sess, args)
 		}
 		'MENU', 'M' {
 			return e.menu(sess)
@@ -423,32 +440,12 @@ fn (e Engine) menu(sess Session) string {
 	if is_node_handle(sess.handle) {
 		b += 'Tip:   CLAIM <handle> <pass> to name your account (log in from other devices).\n'
 	}
-	b += 'HELP for the full command list.'
+	b += 'HELP = guided help (reply with a number).'
 	return b
 }
 
-fn (mut e Engine) help(sess Session) string {
-	mut b := 'Commands (send one letter/word):\n'
-	b += 'H help  MENU  K rooms  C <room>  N new msgs  G goto-unread\n'
-	b += 'R <room> read  L list  W who  WX weather  SW spacewx  NEWS\n'
-	b += 'FORECAST [days]  ALERTS (NWS Sheridan/Johnson Co)\n'
-	b += 'O oneliner [text]  B bulletins  CALLERS  PROFILE <u>\n'
-	b += 'POLL [id]  VOTE <id> <n>  RESULTS <id>\n'
-	b += 'FORTUNE  ROLL <NdM>  8BALL <q>  JOKE\n'
-	b += 'CHANNELS (directory)\n'
-	b += 'STATS\n'
-	b += 'E [subj] enter msg  MAIL <u>  MAILBOX  CHECKMAIL  THREAD <u>  TELL <u> <msg>  SETBIO <text>\n'
-	b += 'POLL NEW <q>|<opt>|<opt>...  POLLCLOSE <id>  CHANADD <name>|<desc>|<info>\n'
-	b += 'Account: CLAIM <handle> <pass>  SETPASS <pass>  LOGIN <handle> <pass>  Q logout\n'
-	b += '/CONFIG — preferences + your own custom commands\n'
-	u := e.current_user(sess) or { User{} }
-	if int(perm_from_int(u.perm)) >= int(Perm.aide) {
-		b += 'AIDE: VERIFY <u>  PROMOTE/DEMOTE/TWIT <u>  BAN/UNBAN <u>  DELETE <id>\n'
-	}
-	if perm_from_int(u.perm) == Perm.sysop {
-		b += 'SYSOP: BULLET <title>|<body>  ALERTTEST [ALL]\n'
-	}
-	return b
+fn (mut e Engine) help_reply(sess Session, args string) string {
+	return e.help.render(args, e.help_viewer(sess))
 }
 
 fn (mut e Engine) who() string {

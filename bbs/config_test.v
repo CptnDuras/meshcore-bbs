@@ -16,7 +16,8 @@ fn test_first_contact_greeting_shown_once() {
 	mut e := cfg_engine()
 	r1 := e.handle('aa', 'HELP')
 	assert r1.contains('Welcome to')
-	assert r1.contains('/CONFIG') || r1.contains('CLAIM')
+	// the welcome is a 3-step start and points at guided help (CLAIM/CONFIG live in HELP 5)
+	assert r1.contains('Start here') && r1.contains('HELP')
 	// second turn: no greeting
 	r2 := e.handle('aa', 'HELP')
 	assert !r2.contains('Welcome to')
