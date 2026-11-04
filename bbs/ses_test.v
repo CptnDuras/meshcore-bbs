@@ -74,20 +74,7 @@ fn test_quotes_and_angle_brackets_cannot_come_through_the_display_name() {
 	assert !c.from_name.contains('"') && !c.from_name.contains('<') && !c.from_name.contains('>')
 }
 
-// ---- addresses ----
-
-fn test_ordinary_addresses_pass() {
-	for a in ['a@b.co', 'first.last+tag@sub.example.org', 'x_y-z@example-mail.com'] {
-		assert valid_email(a), a
-	}
-}
-
-fn test_addresses_that_are_not_addresses_or_that_carry_tricks_fail() {
-	for a in ['', 'plain', 'a@b', '@b.co', 'a@@b.co', 'a b@c.co', 'a@b.co,c@d.co', '<a@b.co>',
-		'"a"@b.co', 'a@b.co\nBcc: x@y.z', 'a@.co', 'a@b..co', 'a@b.co.', 'a(c)@b.co', 'a@b_c.co'] {
-		assert !valid_email(a), a
-	}
-}
+// (what counts as an address is tested in emaillist/emaillist_test.v)
 
 // ---- the request ----
 

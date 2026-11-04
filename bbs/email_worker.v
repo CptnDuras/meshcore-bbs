@@ -1,5 +1,7 @@
 module main
 
+import emaillist
+
 // Drains the email queue, one message per call, so the daemon's one-second loop keeps to SES's sending rate (1 a second in the sandbox).
 //
 //   sent      -> marked sent
@@ -55,7 +57,7 @@ fn (mut w EmailWorker) tick(now i64) bool {
 		return false
 	}
 	m := due[0]
-	if !valid_email(m.to_addr) {
+	if !emaillist.valid_email(m.to_addr) {
 		w.store.mark_email_failed(m.id, 'not an email address') or {}
 		return true
 	}

@@ -62,6 +62,17 @@ A list file has one person a line, any of: `ada@example.com`, `ada@example.com A
 are dropped (case-insensitively), and lines with no usable address are listed back. Importing twice changes nothing,
 and **never brings back someone who was unsubscribed.**
 
+From the web UI (**Email** in the nav, `/email`): make a group, paste a list into **Add people** (the same formats and the
+same rules as the shell import, at most 500 at a time; lines that are not addresses are reported back), and for each person
+**Stop mailing** / **Start again** (also the way to try a `rejected` address once it has been verified in SES) or **Remove**. A
+person already in a group is never changed by adding them again, so pasting the whole list twice is safe and cannot revive
+someone who unsubscribed. The page also shows what is queued, sent in the last 24 hours and failed, with the latest failures.
+Like the other pages it has no sign-in (it is for the tailnet); a form post that says it came from another site is refused.
+
+The page and the daemon are separate programs sharing the database, so they share the rules through the `emaillist` module
+(what an address is, how a list is read, the table columns). `bbs/email_store_test.v` checks those columns against the real
+tables, so changing the tables without the page fails a test.
+
 From the radio (sysop only):
 
 | Command | Does |
@@ -87,5 +98,11 @@ unsubscribe automatically) needs SES receiving and a poller; today the sysop han
 ## Files
 
 `sigv4.v`, `ses.v` (SES), `email_models.v`, `store_email.v` (tables), `email_groups.v` (parsing, commands, fan-out),
-`email_worker.v` (queue), `email_cli.v` (`meshbbs email`), `cmd_email.v` (registration), `tools/ses-setup.sh`.
-Tests: `sigv4_test.v`, `ses_test.v`, `email_groups_test.v`, `email_worker_test.v`, `email_cli_test.v`, `minijson_test.v`.
+`email_worker.v` (queue), `email_cli.v` (`meshbbs email`), `cmd_email.v` (registration), `tools/ses-setup.sh`,
+`emaillist/` (shared rules), `webui/email_ui.v` + `webui/templates/email.html` (the page).
+Tests: `sigv4_test.v`, `ses_test.v`, `email_groups_test.v`, `email_worker_test.v`, `email_cli_test.v`, `email_store_test.v`,
+`minijson_test.v`, `emaillist/emaillist_test.v`, `webui/email_ui_test.v`.
+
+A note for anyone writing a web UI page: `@{...}` in a veb template is HTML-escaped by the V build this was written on, so
+`@{h(x)}` shows people `&amp;#39;`. `email_ui.v` escapes once in `esc()` and passes `veb.RawHtml`, which no build escapes again.
+(The older pages still use `h()`; check them if a name with an apostrophe or an ampersand looks odd.)

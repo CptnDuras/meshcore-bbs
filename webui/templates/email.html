@@ -1,0 +1,114 @@
+@include 'header.html'
+<h2>Email groups</h2>
+<p class="muted">People on a group get the BBS's notices by email: a message you send from the BBS with <code>GSEND</code>, or a
+scheduled message aimed at the group. Add only people who asked to be on the list. Anyone who can open this page can change the lists.</p>
+
+@if msg.len > 0
+	<p style="color:var(--good)"><strong>@{msg}</strong></p>
+@end
+
+@if !page.available
+	<p><em>The email tables do not exist yet. Restart the meshbbs daemon once with the email build (it creates them on startup), then reload this page.</em></p>
+@else
+
+<fieldset>
+	<legend>Sending</legend>
+	<p>Queued <strong>@{page.queued}</strong> &middot; sent <strong>@{page.sent}</strong> (@{page.sent_day} in the last 24 hours) &middot; failed <strong>@{page.failed}</strong></p>
+	@if page.failures.len > 0
+		<p>Latest failures:</p>
+		<ul>
+			@for f in page.failures
+				<li><small>@{f}</small></li>
+			@end
+		</ul>
+	@end
+	<small>The daemon sends one message a second, and only when it has its Amazon SES settings (see docs/61-email-groups.md). Until then mail waits in the queue.
+	SES in sandbox mode only delivers to addresses that have been verified; an address it refuses is marked <em>rejected</em> below.</small>
+</fieldset>
+
+@for g in page.groups
+<fieldset>
+	<legend>@{g.name} <small>&mdash; @{g.active} getting mail, @{g.total} in all</small></legend>
+	@if g.descr.len > 0
+		<p class="muted">@{g.descr}</p>
+	@end
+	@if g.total == 0
+		<p class="muted">Nobody on this list yet.</p>
+	@else
+		<table>
+			<tr><th>Address</th><th>Name</th><th>State</th><th>Last mailed</th><th></th></tr>
+			@for m in g.members
+				<tr>
+					<td class="mono">@{m.email}</td>
+					<td>@{m.name}</td>
+					<td>
+						@if m.is_active
+							<span class="pill on">active</span>
+						@else
+							<span class="pill off">@{m.status}</span>
+							@if m.error.len > 0
+								<br><small>@{m.error}</small>
+							@end
+						@end
+					</td>
+					<td>@{m.last_sent}</td>
+					<td class="actions">
+						@if m.is_active
+							<form method="post" action="/email/stop">
+								<input type="hidden" name="group" value="@{g.name}">
+								<input type="hidden" name="email" value="@{m.email}">
+								<button type="submit" class="ghost" title="Keep them on the list but send nothing">Stop mailing</button>
+							</form>
+						@else
+							<form method="post" action="/email/start">
+								<input type="hidden" name="group" value="@{g.name}">
+								<input type="hidden" name="email" value="@{m.email}">
+								<button type="submit" class="ghost">
+									@if m.is_rejected
+										Try again
+									@else
+										Start again
+									@end
+								</button>
+							</form>
+						@end
+						<form method="post" action="/email/remove" onsubmit="return confirm('Take this address off the list?')">
+							<input type="hidden" name="group" value="@{g.name}">
+							<input type="hidden" name="email" value="@{m.email}">
+							<button type="submit" class="danger">Remove</button>
+						</form>
+					</td>
+				</tr>
+			@end
+		</table>
+	@end
+
+	<form method="post" action="/email/add" style="margin-top:1rem">
+		<input type="hidden" name="group" value="@{g.name}">
+		<label>Add people, one a line: an address, or an address and a name<br>
+			<textarea name="people" rows="4" cols="56" placeholder="ada&#64;example.com Ada Lovelace"></textarea>
+		</label><br>
+		<label>Where they asked to be added <input name="note" size="32" maxlength="60" placeholder="asked at the club meeting"></label>
+		<button type="submit">Add</button>
+	</form>
+
+	<form method="post" action="/email/drop" style="margin-top:1rem" onsubmit="return confirm('Remove this group and its whole list?')">
+		<input type="hidden" name="group" value="@{g.name}">
+		<label><input type="checkbox" name="sure" value="yes"> remove this group and its list</label>
+		<button type="submit" class="danger">Remove group</button>
+	</form>
+</fieldset>
+@end
+
+<fieldset>
+	<legend>New group</legend>
+	<form method="post" action="/email/group">
+		<label>Name <input name="name" size="16" maxlength="24" placeholder="family" required></label>
+		<label>About <input name="descr" size="36" maxlength="60" placeholder="optional"></label>
+		<button type="submit">Make group</button>
+	</form>
+	<small>Names are 2 to 24 letters, digits, - or _. A scheduled message whose target is an email group, or <code>GSEND &lt;name&gt;</code> on the BBS, mails everyone active in it.</small>
+</fieldset>
+
+@end
+@include 'footer.html'

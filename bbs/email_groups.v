@@ -1,5 +1,6 @@
 module main
 
+import emaillist
 import time
 
 // Email groups: the sysop's commands (GROUPS, GROUP, GSEND, EMAILSTATUS) and the fan-out that turns one notice into one queued email per member.
@@ -7,102 +8,7 @@ import time
 
 // ---- pure helpers ----
 
-fn normalize_email(s string) string {
-	return s.trim_space().to_lower()
-}
-
-// Group names are what the sysop types, and what a scheduled message names as its target.
-fn valid_group_name(n string) bool {
-	return n.len >= 2 && n.len <= 24 && n.bytes().all(it.is_alnum() || it == `-` || it == `_`)
-}
-
-struct MemberEntry {
-pub:
-	email string
-	name  string
-}
-
-// One person from one line of a list. Accepts "ada@example.com", "ada@example.com Ada Lovelace", "ada@example.com, Ada Lovelace", "Ada Lovelace <ada@example.com>"
-// and the same with a tab between. none for a blank line, a comment, or a line with no usable address.
-fn parse_member_line(raw string) ?MemberEntry {
-	line := raw.trim_space()
-	if line == '' || line.starts_with('#') {
-		return none
-	}
-	fields := line.replace('\t', ',').replace(';', ',').split(',').map(it.trim_space()).filter(it != '')
-	if fields.len == 0 {
-		return none
-	}
-	// "ada@example.com Ada Lovelace" with spaces only
-	first := fields[0].split(' ')[0]
-	if valid_email(normalize_email(first)) {
-		rest := fields[0].all_after(first).trim_space()
-		extra := if fields.len > 1 { fields[1..].join(' ') } else { '' }
-		return MemberEntry{
-			email: normalize_email(first)
-			name:  clean_name('${rest} ${extra}')
-		}
-	}
-	// "Ada Lovelace <ada@example.com>"
-	if line.contains('<') && line.contains('>') {
-		email := normalize_email(line.all_after('<').all_before('>'))
-		if valid_email(email) {
-			return MemberEntry{
-				email: email
-				name:  clean_name(line.all_before('<'))
-			}
-		}
-		return none
-	}
-	// "Ada Lovelace, ada@example.com"
-	for f in fields {
-		if valid_email(normalize_email(f)) {
-			others := fields.filter(it != f)
-			return MemberEntry{
-				email: normalize_email(f)
-				name:  clean_name(others.join(' '))
-			}
-		}
-	}
-	return none
-}
-
-// a display name is plain text of a sensible length, with nothing in it that could start a header or a tag
-fn clean_name(s string) string {
-	t := s.trim_space().replace('"', '').replace('<', '').replace('>', '').replace('\r', ' ').replace('\n', ' ')
-	r := t.runes()
-	return (if r.len > 60 { r[..60].string() } else { t }).trim_space()
-}
-
-struct ParsedList {
-pub:
-	people []MemberEntry
-	bad    []string // the lines that had text but no usable address
-}
-
-fn parse_member_list(text string) ParsedList {
-	mut people := []MemberEntry{}
-	mut bad := []string{}
-	mut seen := map[string]bool{}
-	for raw in text.split('\n') {
-		line := raw.trim_space()
-		if line == '' || line.starts_with('#') {
-			continue
-		}
-		if p := parse_member_line(line) {
-			if p.email !in seen {
-				seen[p.email] = true
-				people << p
-			}
-		} else {
-			bad << line
-		}
-	}
-	return ParsedList{
-		people: people
-		bad:    bad
-	}
-}
+// (reading a pasted list and checking addresses is in the shared emaillist module, which the web UI uses too)
 
 // the first line of a message, shortened, as its subject
 fn subject_from_text(text string, fallback string) string {
@@ -198,7 +104,7 @@ fn (mut e Engine) group_command(mut sess Session, args string) string {
 	now := time.now().unix()
 	first := parts[0].to_upper()
 	if first == 'NEW' {
-		if parts.len < 2 || !valid_group_name(parts[1].to_lower()) {
+		if parts.len < 2 || !emaillist.valid_group_name(parts[1].to_lower()) {
 			return 'Group names are 2-24 letters, digits, - or _. Usage: GROUP NEW <name> [about]'
 		}
 		name := parts[1].to_lower()
@@ -244,11 +150,11 @@ fn (mut e Engine) group_command(mut sess Session, args string) string {
 			if parts.len < 3 {
 				return 'Usage: GROUP ${name} ADD <email> [name]'
 			}
-			email := normalize_email(parts[2])
-			if !valid_email(email) {
+			email := emaillist.normalize_email(parts[2])
+			if !emaillist.valid_email(email) {
 				return '${parts[2]} does not look like an email address.'
 			}
-			added := e.store.add_email_member(name, email, clean_name(parts[3..].join(' ')), 'added by ${sess.handle}', now) or { return 'Failed: ${err}' }
+			added := e.store.add_email_member(name, email, emaillist.clean_name(parts[3..].join(' ')), 'added by ${sess.handle}', now) or { return 'Failed: ${err}' }
 			return if added {
 				'Added ${email} to ${name}.'
 			} else {
@@ -259,7 +165,7 @@ fn (mut e Engine) group_command(mut sess Session, args string) string {
 			if parts.len < 3 {
 				return 'Usage: GROUP ${name} ${action} <email>'
 			}
-			email := normalize_email(parts[2])
+			email := emaillist.normalize_email(parts[2])
 			m := e.store.get_email_member(name, email) or { return '${email} is not in ${name}.' }
 			if action == 'DEL' {
 				e.store.remove_email_member(name, email) or { return 'Failed: ${err}' }

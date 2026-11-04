@@ -1,5 +1,6 @@
 module main
 
+import emaillist
 import os
 import time
 
@@ -77,7 +78,7 @@ fn email_cli(args []string, mut store Store, mut sender EmailSender, now i64) (s
 				return 'Usage: meshbbs email import <group> <file> [note]', 2
 			}
 			group := args[1].to_lower()
-			if !valid_group_name(group) {
+			if !emaillist.valid_group_name(group) {
 				return 'Group names are 2-24 letters, digits, - or _.', 2
 			}
 			text := os.read_file(args[2]) or { return 'Cannot read ${args[2]}', 1 }
@@ -86,7 +87,7 @@ fn email_cli(args []string, mut store Store, mut sender EmailSender, now i64) (s
 			} else {
 				'imported from ${os.file_name(args[2])}'
 			}
-			list := parse_member_list(text)
+			list := emaillist.parse_member_list(text)
 			made := store.ensure_email_group(group, '', now) or { return 'Failed: ${err}', 1 }
 			mut added := 0
 			mut there := 0
@@ -132,16 +133,18 @@ fn email_cli(args []string, mut store Store, mut sender EmailSender, now i64) (s
 			return if out == '' { 'Group ${group} is empty.' } else { out.trim_right('\n') }, 0
 		}
 		'test' {
-			if args.len < 2 || !valid_email(normalize_email(args[1])) {
+			if args.len < 2 || !emaillist.valid_email(emaillist.normalize_email(args[1])) {
 				return 'Usage: meshbbs email test <address>', 2
 			}
 			r := sender.send(EmailMsg{
-				to:      normalize_email(args[1])
+				to:      emaillist.normalize_email(args[1])
 				subject: 'Test message from the mesh BBS'
 				text:    'If you are reading this, the mesh BBS can send email.\n\nIt was sent from the sysop\'s shell with "meshbbs email test".\n'
 			}, now)
 			return match r.outcome {
-				.sent { 'Sent to ${normalize_email(args[1])} (SES message ${r.message_id}).', 0 }
+				.sent {
+					'Sent to ${emaillist.normalize_email(args[1])} (SES message ${r.message_id}).', 0
+				}
 				.rejected { 'SES refused this address: ${r.error}', 1 }
 				.retry { 'SES could not take it just now: ${r.error}', 1 }
 				.halt { 'Cannot send: ${r.error}', 1 }

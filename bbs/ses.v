@@ -1,5 +1,6 @@
 module main
 
+import emaillist
 import encoding.utf8
 import os
 
@@ -27,11 +28,6 @@ pub:
 	reply_to   string
 }
 
-// no control characters in any value: a newline in a header-bound value could start a second header
-fn plain_value(v string) bool {
-	return v.bytes().all(it >= 32 && it != 127)
-}
-
 fn parse_ses_config(text string) !SesConfig {
 	mut kv := map[string]string{}
 	for raw in text.split('\n') {
@@ -42,7 +38,7 @@ fn parse_ses_config(text string) !SesConfig {
 		kv[line.all_before('=').trim_space().to_lower()] = line.all_after('=').trim_space()
 	}
 	for k, v in kv {
-		if !plain_value(v) {
+		if !emaillist.plain_value(v) {
 			return error('the SES settings value for ${k} has a control character in it')
 		}
 	}
@@ -56,11 +52,11 @@ fn parse_ses_config(text string) !SesConfig {
 		return error('the SES settings need access_key_id and secret_access_key')
 	}
 	from := kv['from'] or { '' }
-	if !valid_email(from) {
+	if !emaillist.valid_email(from) {
 		return error('the SES settings need a from address that looks like an email address')
 	}
 	reply_to := kv['reply_to'] or { '' }
-	if reply_to != '' && !valid_email(reply_to) {
+	if reply_to != '' && !emaillist.valid_email(reply_to) {
 		return error('reply_to is not an email address')
 	}
 	return SesConfig{
@@ -77,21 +73,6 @@ fn parse_ses_config(text string) !SesConfig {
 fn load_ses_config(path string) !SesConfig {
 	text := os.read_file(path) or { return error('cannot read the SES settings at ${path}') }
 	return parse_ses_config(text)
-}
-
-// A deliberately plain check: one @, something before it, a dotted domain after it, no spaces, quotes, angle brackets, commas or control characters.
-// It is there to keep rubbish and header tricks out of the list, not to prove the mailbox exists (SES does that when it tries).
-fn valid_email(a string) bool {
-	if a.len < 6 || a.len > 254 || a.count('@') != 1 || !plain_value(a) {
-		return false
-	}
-	if a.bytes().any(it in [` `, `"`, `<`, `>`, `,`, `;`, `(`, `)`, `\\`, `'`]) {
-		return false
-	}
-	local := a.all_before('@')
-	domain := a.all_after('@')
-	return local.len > 0 && local.len <= 64 && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.') && !domain.contains('..')
-		&& domain.bytes().all(it.is_alnum() || it == `.` || it == `-`)
 }
 
 struct EmailMsg {

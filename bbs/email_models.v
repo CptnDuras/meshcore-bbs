@@ -1,5 +1,7 @@
 module main
 
+import emaillist
+
 // Email groups: lists of people, kept by the sysop, who are sent the BBS's notices by email (a digest, an alert, a message from a sysop). Delivery is by
 // Amazon SES (ses.v); the queue the daemon drains is email_outbox (email_worker.v).
 
@@ -8,9 +10,9 @@ pub const target_email = 'email'
 
 // A member is mailed while 'active'. 'unsubscribed' is set by the sysop at the person's request and is never undone by an import. 'rejected' is set when
 // SES refuses the address (it is not verified, or it bounced); the sysop can look at it and put it back.
-pub const member_active = 'active'
-pub const member_unsubscribed = 'unsubscribed'
-pub const member_rejected = 'rejected'
+pub const member_active = emaillist.member_active
+pub const member_unsubscribed = emaillist.member_unsubscribed
+pub const member_rejected = emaillist.member_rejected
 
 pub const email_queued = 'queued'
 pub const email_sent = 'sent'
