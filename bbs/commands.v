@@ -74,5 +74,6 @@ fn standard_commands() CommandRegistry {
 	register_fun_commands(mut r)
 	register_account_commands(mut r)
 	register_admin_commands(mut r)
+	register_email_commands(mut r)
 	return r
 }

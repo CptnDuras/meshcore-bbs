@@ -127,6 +127,26 @@ mut:
 	list_help_commands() []HelpCommandRow
 	list_help_messages() []HelpMessageRow
 	replace_help(topics []HelpTopicRow, cmds []HelpCommandRow, msgs []HelpMessageRow) !
+	// email groups and the outgoing email queue (see email_models.v)
+	ensure_email_group(name string, descr string, now i64) !bool
+	list_email_groups() []EmailGroup
+	get_email_group(name string) ?EmailGroup
+	delete_email_group(name string) !
+	add_email_member(group string, email string, name string, note string, now i64) !bool
+	get_email_member(group string, email string) ?EmailMember
+	list_email_members(group string) []EmailMember
+	set_email_member_status(group string, email string, status string, err_text string) !
+	touch_email_member_sent(email string, now i64) !
+	remove_email_member(group string, email string) !
+	enqueue_email(to_addr string, subject string, body string, group string, now i64) !
+	due_emails(now i64, limit int) []EmailOutbox
+	mark_email_sent(id int, message_id string, now i64) !
+	mark_email_failed(id int, err_text string) !
+	retry_email_later(id int, err_text string, next_try i64) !
+	count_emails(status string) int
+	count_emails_sent_since(since i64) int
+	recent_failed_emails(limit int) []EmailOutbox
+	prune_emails(before i64) !
 	// proactive mail-notice guard
 	get_mail_notice(handle string) ?MailNotice
 	record_mail_notice(handle string, count int, now i64) !
@@ -197,6 +217,9 @@ pub fn (mut s SqliteStore) migrate() ! {
 		create table UserMacro
 		create table UserPref
 		create table MailNotice
+		create table EmailGroup
+		create table EmailMember
+		create table EmailOutbox
 		create table WxAlertSent
 		create table AlertSetting
 		create table AlertRequest

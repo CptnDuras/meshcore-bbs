@@ -199,8 +199,8 @@ fn test_builtin_screens_fit_one_radio_message() {
 	assert s.render('', sysop).len <= msg_max, 'menu is ${s.render('', sysop).len} bytes'
 	for t in s.visible(sysop) {
 		screen := s.screen(t, sysop)
-		// the staff screen lists every moderator and sysop command, so it may span two messages
-		limit := if t.min_perm == .unverified { msg_max } else { 2 * msg_max }
+		// the staff screen lists every moderator and sysop command, so it may span three messages (it grew past two with the email commands)
+		limit := if t.min_perm == .unverified { msg_max } else { 3 * msg_max }
 		assert screen.len <= limit, 'topic ${t.key} is ${screen.len} bytes'
 	}
 	for c in s.catalog.commands() {

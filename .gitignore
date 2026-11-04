@@ -29,6 +29,10 @@ meshbbs.db
 .kiro/
 .aws-kiro/
 
+# --- secrets: the SES access key (normally kept in ~/.config/meshbbs, never in the tree) ---
+ses.conf
+*.ses.conf
+
 # --- extra build outputs / V compiler scratch ---
 meshbbs_asan
 meshbbs_new

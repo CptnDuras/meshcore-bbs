@@ -193,7 +193,7 @@ fn (mut p JParser) string_() ?string {
 					if p.i + 4 >= p.src.len {
 						return none
 					}
-					cp := int(('0x' + p.src[p.i + 1..p.i + 5]).parse_int(16, 32) or { return none })
+					cp := int(p.src[p.i + 1..p.i + 5].parse_int(16, 32) or { return none }) // no "0x" in front: with a base given, parse_int rejects it, and every \uXXXX then failed the whole document
 					p.i += 4
 					out << utf32_to_str(u32(cp)).bytes()
 				}

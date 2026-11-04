@@ -8,6 +8,10 @@ const default_port = '/dev/cuaU0'
 const default_db = 'sqlite:meshbbs.db'
 
 fn main() {
+	// `meshbbs email ...` are the sysop's email tools: they use the database and SES and never open the radio (email_cli.v)
+	if os.args.len > 1 && os.args[1] == 'email' {
+		exit(email_main(os.args[2..]))
+	}
 	port := if os.args.len > 1 { os.args[1] } else { default_port }
 	db_cfg := if os.args.len > 2 { os.args[2] } else { default_db }
 
@@ -35,6 +39,11 @@ fn main() {
 	help_renderer, help_source := load_help_renderer(mut engine.store, engine.help_file)
 	engine.help = help_renderer
 	println('Help text loaded from ${help_source}.')
+
+	// --- email groups: off unless the SES settings file is there (email_worker.v) ---
+	mut emailer := open_email_worker(engine.store, fn (s string) {
+		println(s)
+	})
 
 	// --- radio ---
 	println('meshbbs starting on ${port} (db=${db_cfg}) ...')
@@ -259,6 +268,9 @@ fn main() {
 
 		// Periodic flood advert every 30 min so the mesh keeps a fresh route.
 		if now - last_advert >= advert_interval {
+
+		// Email groups: at most one queued message a second (SES's sending rate).
+		emailer.tick(now)
 			mc.send_advert(true) or { eprintln('periodic flood advert failed: ${err}') }
 			last_advert = now
 			println('[advert] periodic flood advert sent')
@@ -308,6 +320,15 @@ fn main() {
 					}
 				}
 				time.sleep(500 * time.millisecond)
+			if om.target_kind == target_email {
+				// a notice for an email group: one queued email per member (the worker above sends them)
+				why := engine.email_outbound(om, now)
+				if why != '' {
+					eprintln('[outbound] email #${om.id} to ${om.target}: ${why}')
+				}
+				engine.store.mark_outbound_sent(om.id) or {}
+				continue
+			}
 			}
 			if ok {
 				engine.store.mark_outbound_sent(om.id) or {}

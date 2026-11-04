@@ -41,6 +41,9 @@ fn (mut e Engine) finalize_entry(mut sess Session) string {
 		e.store.send_mail(recipient, sess.handle, body) or { return 'Mail failed: ${err}' }
 		return 'Mail sent to ${recipient}.'
 	}
+	if mode == 'gsend' {
+		return e.gsend_finish(recipient, subject, body) // recipient holds the group's name
+	}
 	// room post
 	if sess.current_board == 0 {
 		return 'No room selected; message discarded.'

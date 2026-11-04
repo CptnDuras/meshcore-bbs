@@ -473,3 +473,35 @@ usage: HELPIMPORT
 summary: help file to db
 perm: sysop
 example: HELPIMPORT copies help.txt into the database; after that the database is the help source.
+
+[command GROUPS]
+names: GROUPS
+topic: staff
+usage: GROUPS
+summary: email lists
+perm: sysop
+example: GROUPS lists the email groups and how many people in each get mail.
+
+[command GROUP]
+names: GROUP
+topic: staff
+usage: GROUP NEW <g> | <g> ADD <email>
+summary: manage a list
+perm: sysop
+example: GROUP NEW family makes a list; then GROUP family ADD ada@example.com Ada. Also LIST, DEL, STOP, START, DROP.
+
+[command GSEND]
+names: GSEND
+topic: staff
+usage: GSEND <g> [subject]
+summary: email a list
+perm: sysop
+example: GSEND family Net tonight, then the message, then . alone. Everyone active in the list gets an email.
+
+[command EMAILSTATUS]
+names: EMAILSTATUS, EMAILS
+topic: staff
+usage: EMAILSTATUS
+summary: email queue
+perm: sysop
+example: EMAILSTATUS shows emails queued, sent and failed, and the last few failures.
