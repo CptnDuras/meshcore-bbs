@@ -292,9 +292,6 @@ class App:
         if is_stop(text, subject):
             if status == 'active':
                 self.store.set_status(sender, 'unsubscribed', only_from='active')
-                self._tell(sender, f'You are off the {cfg.list_name} list',
-                           f'You will not get any more mail from the {cfg.list_name} list. '
-                           f'To come back, sign up again at {self.site()}/\n')
             return self._done(mid, 'stop', sender=sender)
         if cfg.posting == 'members' and status != 'active':
             return self._done(mid, 'rejected', reason='not a member', sender=sender)

@@ -318,14 +318,14 @@ class Refusals(unittest.TestCase):
 
 
 class Leaving(unittest.TestCase):
-    def test_a_member_who_writes_stop_is_taken_off_and_told(self):
+    def test_a_member_who_writes_stop_is_taken_off_silently(self):
         a = make_app()
         with_members(a, 'ada', 'bob')
         self.assertEqual(post(a, raw(body='STOP')), 'stop')
         self.assertEqual(a.store.members['ada@example.com']['status'], 'unsubscribed')
-        self.assertEqual([m['to'] for m in a.mailer.sent], ['ada@example.com'])  # the notice, to them only
-        self.assertEqual(post(a, raw(), mid='m2'), 'posted')  # they are no longer on the list, but may still write
-        self.assertEqual([m['to'] for m in a.mailer.sent[1:]], ['bob@example.com'])
+        self.assertEqual(a.mailer.sent, [])  # no goodbye, and the STOP itself never goes to the list
+        self.assertEqual(post(a, raw(), mid='m2'), 'posted')  # (this test list is open to non-members)
+        self.assertEqual([m['to'] for m in a.mailer.sent], ['bob@example.com'])
 
     def test_stop_from_someone_not_on_the_list_does_nothing(self):
         a = make_app()
@@ -337,7 +337,7 @@ class Leaving(unittest.TestCase):
         a = make_app()
         with_members(a, 'ada', 'bob', 'cy')
         post(a, raw(body='stop'))
-        self.assertTrue(all(m['to'] == 'ada@example.com' for m in a.mailer.sent))
+        self.assertEqual(a.mailer.sent, [])
 
 
 class Bounces(unittest.TestCase):
