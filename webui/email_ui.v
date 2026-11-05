@@ -174,11 +174,12 @@ fn email_add_people(mut db sqlite.DB, group string, text string, note string, no
 	}
 	mut added := 0
 	mut there := 0
-	for p in list.people[..if list.people.len > email_max_people_per_paste {
+	take := if list.people.len > email_max_people_per_paste {
 		email_max_people_per_paste
 	} else {
 		list.people.len
-	}] {
+	}
+	for p in list.people[..take] {
 		if email_has_member(mut db, group, p.email) {
 			there++
 			continue

@@ -274,3 +274,108 @@ fn test_log_helpers() {
 	}])
 	assert txt == 't  packet  s\n    d\nt2  broker [b]  connected\n'
 }
+
+// --- the planner report settings ---
+
+fn report_form() map[string]string {
+	return {
+		'report_enabled': '1'
+		'report_url':     'https://xerokuhl.com/planner-api/ingest'
+		'report_token':   'a-long-enough-token-for-the-test'
+		'report_minutes': '20'
+	}
+}
+
+fn test_the_report_is_off_by_default_and_the_token_is_never_shown() {
+	mut db := fresh_db()
+	p := mqtt_load(mut db).report
+	assert !p.enabled
+	assert !p.has_token
+	assert p.minutes == 15
+	assert mqtt_save_report(mut db, report_form()) == ''
+	q := mqtt_load(mut db).report
+	assert q.enabled
+	assert q.has_token
+	assert q.url == 'https://xerokuhl.com/planner-api/ingest'
+	assert q.minutes == 20
+	assert !q.public
+}
+
+fn test_saving_the_report_tells_the_daemon_to_reload() {
+	mut db := fresh_db()
+	r0 := mqtt_load(mut db).rev.int()
+	assert mqtt_save_report(mut db, report_form()) == ''
+	assert mqtt_load(mut db).rev.int() > r0
+}
+
+fn test_a_blank_token_keeps_the_stored_one() {
+	mut db := fresh_db()
+	assert mqtt_save_report(mut db, report_form()) == ''
+	mut f := report_form()
+	f['report_token'] = ''
+	f['report_minutes'] = '30'
+	assert mqtt_save_report(mut db, f) == ''
+	assert mqtt_load(mut db).report.has_token
+	assert mqtt_setting(mut db, 'report_token') == 'a-long-enough-token-for-the-test'
+	assert mqtt_load(mut db).report.minutes == 30
+}
+
+fn test_a_bad_report_setting_is_refused_and_changes_nothing() {
+	mut db := fresh_db()
+	assert mqtt_save_report(mut db, report_form()) == ''
+	mut f := report_form()
+	f['report_url'] = 'http://xerokuhl.com/x'
+	assert mqtt_save_report(mut db, f).contains('https')
+	f = report_form()
+	f['report_token'] = 'short'
+	assert mqtt_save_report(mut db, f).contains('token')
+	f = report_form()
+	f['report_lat'] = '44.3'
+	assert mqtt_save_report(mut db, f).contains('both')
+	f = report_form()
+	f['report_public'] = '1'
+	assert mqtt_save_report(mut db, f).contains('latitude and longitude')
+	assert mqtt_load(mut db).report.minutes == 20 // still what the first save set
+}
+
+fn test_it_cannot_be_switched_on_without_an_address_and_a_token() {
+	mut db := fresh_db()
+	mut f := report_form()
+	f['report_url'] = ''
+	assert mqtt_save_report(mut db, f).contains('address')
+	f = report_form()
+	f['report_token'] = ''
+	assert mqtt_save_report(mut db, f).contains('token')
+	f['report_enabled'] = '0' // off needs neither
+	assert mqtt_save_report(mut db, f) == ''
+}
+
+fn test_a_position_and_showing_it_are_separate_choices() {
+	mut db := fresh_db()
+	mut f := report_form()
+	f['report_lat'] = '44.348'
+	f['report_lon'] = '-106.7'
+	assert mqtt_save_report(mut db, f) == ''
+	p := mqtt_load(mut db).report
+	assert p.lat == '44.348'
+	assert !p.public
+	f['report_public'] = '1'
+	assert mqtt_save_report(mut db, f) == ''
+	assert mqtt_load(mut db).report.public
+}
+
+// --- the JSON view of the settings (mqtt_api.v) ---
+
+fn test_the_json_view_has_the_settings_and_never_a_secret() {
+	mut db := fresh_db()
+	assert mqtt_save_report(mut db, report_form()) == ''
+	j := mqtt_json(mqtt_load(mut db))
+	assert j.contains('"url":"https://xerokuhl.com/planner-api/ingest"')
+	assert j.contains('"has_token":true')
+	assert j.contains('"minutes":20')
+	assert !j.contains('a-long-enough-token-for-the-test')
+}
+
+fn test_json_strings_are_escaped() {
+	assert jstr('a"b\\c\nd') == '"a\\"b\\\\c\\nd"'
+}

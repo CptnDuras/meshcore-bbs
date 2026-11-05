@@ -204,6 +204,13 @@ pub fn (app &App) mqtt_settings(mut ctx Context) veb.Result {
 	return mqtt_back(mut ctx, mqtt_save_settings(mut db, enabled, ctx.form['iata'] or { '' }))
 }
 
+@['/mqtt/report'; post]
+pub fn (app &App) mqtt_report(mut ctx Context) veb.Result {
+	mut db := app.db() or { return ctx.redirect('/mqtt', typ: .found) }
+	defer { db.close() or {} }
+	return mqtt_back(mut ctx, mqtt_save_report(mut db, ctx.form.clone()))
+}
+
 @['/mqtt/broker/add'; post]
 pub fn (app &App) mqtt_broker_add(mut ctx Context) veb.Result {
 	mut db := app.db() or { return ctx.redirect('/mqtt', typ: .found) }

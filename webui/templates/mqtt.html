@@ -34,6 +34,34 @@
 	the radio into memory and is never stored or shown.</small>
 </fieldset>
 
+<fieldset>
+	<legend>Planner report</legend>
+	<p class="muted">Every few minutes, posts a summary of the <strong>repeaters and rooms</strong> this node has heard (name, position,
+	how often and how strongly, which were seen side by side in a path) to a planner service such as xerokuhl.com, which draws them next to
+	its coverage estimates. Chat clients are never included. Optional and <strong>off by default</strong>.</p>
+	<form method="post" action="/mqtt/report">
+		<label>
+			<input type="checkbox" name="report_enabled" value="1" @{checked_attr(page.report.enabled)}> Send the report
+		</label><br>
+		<label>Address <input name="report_url" value="@{h(page.report.url)}" size="48" placeholder="https://xerokuhl.com/planner-api/ingest"></label><br>
+		<label>Token <input type="password" name="report_token" placeholder="@{pw_hint(page.report.has_token)}" autocomplete="new-password" size="32"></label><br>
+		<label>Every <input name="report_minutes" value="@{page.report.minutes}" size="4"> minutes (5 to 120)</label><br>
+		<label>This node's position (optional): latitude <input name="report_lat" value="@{h(page.report.lat)}" size="10">
+		longitude <input name="report_lon" value="@{h(page.report.lon)}" size="10"></label><br>
+		<label>
+			<input type="checkbox" name="report_public" value="1" @{checked_attr(page.report.public)}> Show this node's position on the planner's map
+		</label>
+		<button type="submit">Save</button>
+	</form>
+	<p>Status: <strong>@{h(page.report.state)}</strong>
+	@if page.report.last_ok.len > 0
+		&nbsp;·&nbsp; last delivered <strong>@{h(page.report.last_ok)}</strong>
+	@end
+	</p>
+	<small>Your position is sent only if you fill it in, and the planner shows it only if the box above is ticked. A node's
+	own position is often a home address: leave the box unticked unless that is a public site.</small>
+</fieldset>
+
 <h3>Brokers</h3>
 @if page.brokers.len == 0
 	<p><em>No brokers yet. Add one below.</em></p>

@@ -36,6 +36,20 @@ struct MqttPage {
 	rev       string
 	brokers   []MqttBrokerView
 	presets   []string
+	report    ReportPage
+}
+
+// The planner report's settings as the page shows them. The token itself is never sent back to the page.
+struct ReportPage {
+	enabled   bool
+	url       string
+	has_token bool
+	minutes   int
+	public    bool
+	lat       string
+	lon       string
+	state     string // the daemon's own description of how it is going
+	last_ok   string
 }
 
 fn mqtt_setting(mut db sqlite.DB, key string) string {
@@ -100,7 +114,61 @@ fn mqtt_load(mut db sqlite.DB) MqttPage {
 		rev:       mqtt_setting(mut db, 'rev')
 		brokers:   brokers
 		presets:   mqttcfg.preset_names()
+		report:    report_load(mut db)
 	}
+}
+
+fn report_load(mut db sqlite.DB) ReportPage {
+	last := mqtt_setting(mut db, 'report_last_ok')
+	return ReportPage{
+		enabled:   mqtt_setting(mut db, mqttcfg.report_key_enabled) == '1'
+		url:       mqtt_setting(mut db, mqttcfg.report_key_url)
+		has_token: mqtt_setting(mut db, mqttcfg.report_key_token).len > 0
+		minutes:   mqttcfg.report_minutes(mqtt_setting(mut db, mqttcfg.report_key_minutes))
+		public:    mqtt_setting(mut db, mqttcfg.report_key_public) == '1'
+		lat:       mqtt_setting(mut db, mqttcfg.report_key_lat)
+		lon:       mqtt_setting(mut db, mqttcfg.report_key_lon)
+		state:     mqtt_setting(mut db, 'report_state')
+		last_ok:   if last.len > 0 { fmt_ts(last) } else { '' }
+	}
+}
+
+// mqtt_save_report stores the planner report settings. Returns '' or the reason; on error nothing is changed. A blank token field keeps the stored
+// one (the page never shows it). The report can be switched on only with an address and a token that pass the rules.
+fn mqtt_save_report(mut db sqlite.DB, form map[string]string) string {
+	enabled := (form['report_enabled'] or { '' }) == '1'
+	url := (form['report_url'] or { '' }).trim_space()
+	given := (form['report_token'] or { '' }).trim_space()
+	if url.len > 0 {
+		why := mqttcfg.valid_report_url(url)
+		if why.len > 0 {
+			return why
+		}
+	}
+	if given.len > 0 && !mqttcfg.valid_report_token(given) {
+		return 'the token must be ${mqttcfg.report_min_token} to 200 plain characters (no spaces or quotes)'
+	}
+	token := if given.len > 0 { given } else { mqtt_setting(mut db, mqttcfg.report_key_token) }
+	if enabled && (url.len == 0 || token.len == 0) {
+		return 'give the address and the token before switching the report on'
+	}
+	lat, lon, located, perr := mqttcfg.parse_position(form['report_lat'] or { '' }, form['report_lon'] or { '' })
+	if perr.len > 0 {
+		return perr
+	}
+	public := (form['report_public'] or { '' }) == '1'
+	if public && !located {
+		return 'to show this node on the map, give its latitude and longitude'
+	}
+	mqtt_put_setting(mut db, mqttcfg.report_key_url, url)
+	mqtt_put_setting(mut db, mqttcfg.report_key_token, token)
+	mqtt_put_setting(mut db, mqttcfg.report_key_minutes, mqttcfg.report_minutes(form['report_minutes'] or { '' }).str())
+	mqtt_put_setting(mut db, mqttcfg.report_key_public, if public { '1' } else { '0' })
+	mqtt_put_setting(mut db, mqttcfg.report_key_lat, if located { lat.str() } else { '' })
+	mqtt_put_setting(mut db, mqttcfg.report_key_lon, if located { lon.str() } else { '' })
+	mqtt_put_setting(mut db, mqttcfg.report_key_enabled, if enabled { '1' } else { '0' })
+	mqtt_bump_rev(mut db)
+	return ''
 }
 
 // mqtt_save_settings stores the on/off switch and IATA code. Returns '' or an

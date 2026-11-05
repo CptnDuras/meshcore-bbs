@@ -77,9 +77,27 @@ fn main() {
 			return mc.export_private_key()!.hex()
 		}
 	}
-	// Every packet the radio hears is forwarded (a no-op unless MQTT is running).
-	mc.subscribe(.log_rx_data, fn [mut mqtt] (ev meshcore.Event) {
-		mqtt.on_packet(time.now().unix(), ev.payload.snr, ev.payload.rssi, ev.payload.data)
+	// --- optional planner report (off unless configured in the web UI) ---
+	// Tallies the repeaters and rooms heard and posts a summary to a planner service every few minutes (observe_report.v).
+	mut observed := &Aggregator{}
+	mut reporter := &Reporter{
+		agg:      observed
+		poster:   &CurlPoster{}
+		launcher: ThreadLauncher{}
+		ident:    mqtt_ident
+		radio:    ObserverRadio{
+			freq: si.payload.radio_freq
+			bw:   si.payload.radio_bw
+			sf:   int(si.payload.radio_sf)
+			cr:   int(si.payload.radio_cr)
+			dbm:  int(si.payload.tx_power)
+		}
+	}
+	// Every packet the radio hears is forwarded (a no-op unless MQTT is running, or the planner report is on).
+	mc.subscribe(.log_rx_data, fn [mut mqtt, mut observed] (ev meshcore.Event) {
+		now := time.now().unix()
+		mqtt.on_packet(now, ev.payload.snr, ev.payload.rssi, ev.payload.data)
+		observed.record(now, ev.payload.snr, ev.payload.rssi, ev.payload.data)
 	})
 
 	// Set this node's advertised friendly name so neighbours see 'MESHBBS'
@@ -250,6 +268,10 @@ fn main() {
 
 		// MQTT observer: reconcile the publisher with the web-UI configuration.
 		mqtt.tick(now, mut engine.store)
+		reporter.tick(now, mut engine.store)
+
+		// Email groups: at most one queued message a second (SES's sending rate).
+		emailer.tick(now)
 
 		// NWS emergency alerts for Sheridan / Johnson county: channel + DMs.
 		if now - last_alert_poll >= alerts_poll_secs {
@@ -268,9 +290,6 @@ fn main() {
 
 		// Periodic flood advert every 30 min so the mesh keeps a fresh route.
 		if now - last_advert >= advert_interval {
-
-		// Email groups: at most one queued message a second (SES's sending rate).
-		emailer.tick(now)
 			mc.send_advert(true) or { eprintln('periodic flood advert failed: ${err}') }
 			last_advert = now
 			println('[advert] periodic flood advert sent')
@@ -301,6 +320,15 @@ fn main() {
 
 		// Drain the outbound queue (the daemon is the sole owner of the radio).
 		for om in engine.store.pending_outbound(20) {
+			if om.target_kind == target_email {
+				// a notice for an email group: one queued email per member (the worker above sends them)
+				why := engine.email_outbound(om, now)
+				if why != '' {
+					eprintln('[outbound] email #${om.id} to ${om.target}: ${why}')
+				}
+				engine.store.mark_outbound_sent(om.id) or {}
+				continue
+			}
 			pages := paginate(om.text)
 			out_msgs, _, _ := burst(pages, 0)
 			mut ok := true
@@ -320,15 +348,6 @@ fn main() {
 					}
 				}
 				time.sleep(500 * time.millisecond)
-			if om.target_kind == target_email {
-				// a notice for an email group: one queued email per member (the worker above sends them)
-				why := engine.email_outbound(om, now)
-				if why != '' {
-					eprintln('[outbound] email #${om.id} to ${om.target}: ${why}')
-				}
-				engine.store.mark_outbound_sent(om.id) or {}
-				continue
-			}
 			}
 			if ok {
 				engine.store.mark_outbound_sent(om.id) or {}
