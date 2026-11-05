@@ -238,7 +238,7 @@ class App:
 
     def unsubscribe_url(self, member):
         from urllib.parse import quote
-        return f"{self.site()}/unsubscribe?e={quote(member['email'])}&t={member['token']}"
+        return f"{self.site()}/unsubscribe?e={quote(member['email'])}"
 
     # ---------- mail sent to the list ----------
 
@@ -362,13 +362,18 @@ class App:
         if path == '/subscribe' and method == 'POST':
             self.subscribe(form.get('email', ''), form.get('name', ''), form.get('website', ''), ip, site)
             return 200, pages.notice(self.cfg, 'Check your email', 'If that address can join, a message from the list is on its way with a link to confirm. Nothing happens until you click it.')
-        if path in ('/confirm', '/unsubscribe'):
+        if path == '/unsubscribe' and method == 'GET':
+            return 200, pages.leave(self.cfg, clean_address(query.get('e', '')) or '')
+        if path == '/unsubscribe' and method == 'POST':
+            self.leave(clean_address(form.get('e', '')), ip)
+            return 200, pages.notice(self.cfg, 'You are off the list', 'If that address was on the list it is not any more, and no more mail will be sent to it.')
+        if path == '/confirm':
             src = query if method == 'GET' else form
             e, t = clean_address(src.get('e', '')), src.get('t', '')
             if method == 'GET':
                 return 200, pages.confirm(self.cfg, path, e or '', t)
             if method == 'POST':
-                done = self.confirm(e, t) if path == '/confirm' else self.leave(e, t)
+                done = self.confirm(e, t)
                 return (200, pages.notice(self.cfg, *done[1:])) if done[0] else (400, pages.notice(self.cfg, 'That link does not work', 'It may be old or already used. You can ask for a new one on the sign-up page.'))
         return 404, pages.notice(self.cfg, 'Not found', '')
 
@@ -408,11 +413,9 @@ class App:
             return False, '', ''
         return True, 'You are on the list', f'Mail sent to {self.cfg.list_address} now reaches you. Every message has a link to leave.'
 
-    def leave(self, address, token):
-        if not address or not token:
-            return False, '', ''
-        m = self.store.get_member(address)
-        if not m or m['status'] != 'active' or not hmac.compare_digest(str(m.get('token', '')), token):
-            return False, '', ''
-        self.store.set_status(address, 'unsubscribed', only_from='active')
-        return True, 'You are off the list', 'You will not get any more mail from it.'
+    def leave(self, address, ip):
+        """Takes anyone off who asks to be, by address alone (no token: leaving must never be hard). Limited per address of the asker."""
+        now = int(self.now())
+        if not address or not self.store.bump(f'leave#{ip}#{now // 3600}', 30, 2 * 3600, now):
+            return False
+        return self.store.set_status(address, 'unsubscribed', only_from='active')

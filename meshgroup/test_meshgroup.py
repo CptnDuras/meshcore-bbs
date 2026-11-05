@@ -173,7 +173,7 @@ class Posting(unittest.TestCase):
         self.assertIn('This message is from Ada Lovelace <ada@example.com>', m['text'])
         self.assertIn('Send them to https://lists.example/\n', m['text'])  # the link to share
         self.assertIn('https://lists.example/unsubscribe?e=' + m['to'].replace('@', '%40'), m['text'])
-        self.assertIn('&t=tok-' + m['to'].split('@')[0], m['text'])
+        self.assertNotIn('&t=', m['text'])  # leaving needs no token
         self.assertEqual(a.objects.deleted, ['inbound/m1'])
 
     def test_each_person_gets_their_own_leave_link(self):
@@ -409,15 +409,27 @@ class SigningUp(unittest.TestCase):
             self.join(a, f'q{i}@example.com', ip=f'8.8.8.{i}')
         self.assertEqual(len(a.mailer.sent), 4)  # the hour's allowance is spent whoever asks
 
-    def test_leaving_by_the_link(self):
+    def test_leaving_by_the_link_needs_only_the_address(self):
         a = make_app()
-        with_members(a, 'ada')
-        t = a.store.members['ada@example.com']['token']
-        self.assertEqual(a.web('GET', '/unsubscribe', {'e': 'ada@example.com', 't': t}, {}, '', '')[0], 200)
-        self.assertEqual(a.store.members['ada@example.com']['status'], 'active')
-        self.assertEqual(a.web('POST', '/unsubscribe', {}, {'e': 'ada@example.com', 't': 'bad'}, '', '')[0], 400)
-        self.assertEqual(a.web('POST', '/unsubscribe', {}, {'e': 'ada@example.com', 't': t}, '', '')[0], 200)
+        with_members(a, 'ada', 'bob')
+        status, html = a.web('GET', '/unsubscribe', {'e': 'ada@example.com'}, {}, '', '')
+        self.assertEqual(status, 200)
+        self.assertIn('value="ada@example.com"', html)
+        self.assertEqual(a.store.members['ada@example.com']['status'], 'active')  # opening the page changes nothing
+        self.assertEqual(a.web('POST', '/unsubscribe', {}, {'e': 'ada@example.com'}, '1.1.1.1', '')[0], 200)
         self.assertEqual(a.store.members['ada@example.com']['status'], 'unsubscribed')
+        self.assertEqual(a.store.members['bob@example.com']['status'], 'active')
+        # the same answer for an address that was never on the list, and for nonsense
+        for e in ('nobody@example.com', 'junk'):
+            self.assertEqual(a.web('POST', '/unsubscribe', {}, {'e': e}, '1.1.1.1', '')[0], 200)
+
+    def test_leaving_is_limited_per_asker(self):
+        a = make_app()
+        for i in range(31):
+            with_members(a, f'm{i}')
+        for i in range(31):
+            a.web('POST', '/unsubscribe', {}, {'e': f'm{i}@example.com'}, '2.2.2.2', '')
+        self.assertEqual(a.store.members['m30@example.com']['status'], 'active')
 
     def test_someone_who_left_can_sign_up_again_and_a_blocked_one_cannot(self):
         a = make_app()

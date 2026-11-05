@@ -29,6 +29,12 @@ def notice(cfg, title, text):
     return page(title, f'<h1>{h(title)}</h1><p>{h(text)}</p><p><a href="/">Back</a></p>')
 
 
+def leave(cfg, address):
+    return page('Leave the list', f"""<h1>Leave the list</h1>
+<form method="post" action="/unsubscribe"><label>Your email<input name="e" type="email" required maxlength="254" value="{h(address)}"></label>
+<button type="submit">Leave the list</button></form>""")
+
+
 def confirm(cfg, path, address, token):
     verb = 'Join the list' if path == '/confirm' else 'Leave the list'
     return page(verb, f"""<h1>{h(verb)}</h1><p>{h(address)}</p>
