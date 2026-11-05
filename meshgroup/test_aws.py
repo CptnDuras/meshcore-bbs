@@ -63,11 +63,15 @@ class AwsTests(unittest.TestCase):
         return {'Records': [{'eventSource': 'aws:ses', 'ses': {'mail': {'messageId': mid, 'source': source}, 'receipt': receipt or GOOD}}]}
 
     def test_a_message_goes_through_the_whole_lambda(self):
+        self.store.add_active('ada@example.com', 'Ada', NOW)  # only members may post
         self.store.add_active('bob@example.com', 'Bob', NOW)
         self.store.add_active('cy@example.com', 'Cy', NOW)
         self.s3.put_object(Bucket='mail', Key='inbound/abc', Body=raw())
         out = self.handler.lambda_handler(self.ses_event('abc'), None)
         self.assertEqual(out, {'results': ['posted']})
+        self.s3.put_object(Bucket='mail', Key='inbound/xyz', Body=raw(frm='Eve <eve@example.com>'))
+        stranger = self.handler.lambda_handler(self.ses_event('xyz', source='eve@example.com'), None)
+        self.assertEqual(stranger, {'results': ['rejected']})
         self.assertEqual(self.handler.lambda_handler(self.ses_event('abc'), None), {'results': ['duplicate']})
         self.assertEqual(self.s3.list_objects_v2(Bucket='mail').get('KeyCount'), 0)  # the message was deleted from the bucket
 
