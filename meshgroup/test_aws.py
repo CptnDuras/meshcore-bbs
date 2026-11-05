@@ -87,6 +87,25 @@ class AwsTests(unittest.TestCase):
         r = self.handler.lambda_handler(ev('POST', '/subscribe', body='x' * 9000), None)
         self.assertEqual(r['statusCode'], 413)
 
+    def test_the_owner_page_through_the_api_shape(self):
+        import console
+        from urllib.parse import quote
+        self.store.set_login(console.new_login('correct horse battery'))
+        ev = lambda m, p, body='', cookies=None: {'requestContext': {'http': {'method': m, 'path': p, 'sourceIp': '1.2.3.4'}, 'domainName': 'groups.example'},
+                                                  'rawQueryString': '', 'body': body, 'cookies': cookies or [], 'isBase64Encoded': False}
+        r = self.handler.lambda_handler(ev('POST', '/admin/login', 'password=wrong'), None)
+        self.assertEqual(r['statusCode'], 401)
+        r = self.handler.lambda_handler(ev('POST', '/admin/login', 'password=correct+horse+battery'), None)
+        self.assertEqual((r['statusCode'], r['headers']['Location']), (303, '/admin'))
+        cookie = r['cookies'][0].split(';')[0]
+        page = self.handler.lambda_handler(ev('GET', '/admin', cookies=[cookie]), None)['body']
+        token = page.split('name="c" value="')[1].split('"')[0]
+        r = self.handler.lambda_handler(ev('POST', '/admin/add', f'c={token}&people={quote("ada@example.com Ada")}', [cookie]), None)
+        self.assertIn('1 added', r['body'])
+        self.assertEqual(self.store.get_member('ada@example.com')['status'], 'active')
+        self.assertNotIn('Add people', self.handler.lambda_handler(ev('GET', '/admin'), None)['body'])  # no cookie, no page
+        self.assertEqual(self.handler.lambda_handler(ev('POST', '/subscribe', 'x' * 70000), None)['statusCode'], 413)
+
     def test_a_bounce_through_sns_shape(self):
         import json
         self.store.add_active('ada@example.com', 'Ada', NOW)

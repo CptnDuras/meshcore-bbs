@@ -42,6 +42,23 @@ class FakeStore:
     def list_active(self):
         return [dict(m) for m in self.members.values() if m['status'] == 'active']
 
+    def list_all(self):
+        return [dict(m) for m in self.members.values()]
+
+    def remove(self, a):
+        self.members.pop(a, None)
+
+    def put_blocked(self, a, now):
+        self.members[a] = {'email': a, 'name': '', 'token': '', 'status': 'blocked'}
+
+    login = None
+
+    def get_login(self):
+        return self.login
+
+    def set_login(self, record):
+        self.login = record
+
     def count_active(self):
         return len(self.list_active())
 
@@ -153,7 +170,8 @@ class Posting(unittest.TestCase):
         self.assertEqual(m['sender'], 'Ada Lovelace via Mesh Group <meshgroup@xerokuhl.com>')
         self.assertEqual(m['reply_to'], LIST)
         self.assertIn('See you at 8.', m['text'])
-        self.assertIn('ada@example.com', m['text'])
+        self.assertIn('This message is from Ada Lovelace <ada@example.com>', m['text'])
+        self.assertIn('Send them to https://lists.example/\n', m['text'])  # the link to share
         self.assertIn('https://lists.example/unsubscribe?e=' + m['to'].replace('@', '%40'), m['text'])
         self.assertIn('&t=tok-' + m['to'].split('@')[0], m['text'])
         self.assertEqual(a.objects.deleted, ['inbound/m1'])
@@ -440,6 +458,127 @@ class SigningUp(unittest.TestCase):
         a = app.App(c, FakeStore(), FakeMailer(), FakeObjects(), now=lambda: NOW, sleep=lambda s: None, log=lambda s: None)
         self.join(a)
         self.assertIn('https://x.lambda-url.us-west-2.on.aws/confirm?e=', a.mailer.sent[0]['text'])
+
+
+class Owner(unittest.TestCase):
+    """The /admin page: login, session cookie, and changes to the list."""
+    PASSWORD = 'correct horse battery'
+
+    def setUp(self):
+        import console
+        self.console = console
+        self.a = make_app()
+        self.a.store.set_login(console.new_login(self.PASSWORD))
+
+    def go(self, method, path, form=None, cookies=None, ip='9.9.9.9'):
+        return self.a.console.handle(method, path, form or {}, ip, cookies or {})
+
+    def login(self):
+        r = self.go('POST', '/admin/login', {'password': self.PASSWORD})
+        self.assertEqual((r.status, r.location), (303, '/admin'))
+        return {self.console.COOKIE: r.cookie.split(';')[0].split('=', 1)[1]}
+
+    def csrf(self, cookies):
+        return self.go('GET', '/admin', cookies=cookies).html.split('name="c" value="')[1].split('"')[0]
+
+    def test_nothing_shows_without_a_password_set_or_a_login(self):
+        self.a.store.login = None
+        self.assertEqual(self.go('GET', '/admin').status, 503)
+        self.a.store.set_login(self.console.new_login(self.PASSWORD))
+        html = self.go('GET', '/admin').html
+        self.assertIn('Password', html)
+        self.assertNotIn('Add people', html)
+
+    def test_the_password_logs_in_and_a_wrong_one_does_not(self):
+        self.assertEqual(self.go('POST', '/admin/login', {'password': 'nope'}).status, 401)
+        r = self.go('POST', '/admin/login', {'password': self.PASSWORD})
+        for part in ('Secure', 'HttpOnly', 'SameSite=Strict', 'Path=/'):
+            self.assertIn(part, r.cookie)
+        self.assertTrue(r.cookie.startswith('__Host-mg='))
+
+    def test_logins_are_limited_per_address(self):
+        for _ in range(10):
+            self.go('POST', '/admin/login', {'password': 'nope'})
+        self.assertEqual(self.go('POST', '/admin/login', {'password': self.PASSWORD}).status, 429)
+        self.assertEqual(self.go('POST', '/admin/login', {'password': self.PASSWORD}, ip='8.8.8.8').status, 303)
+
+    def test_a_forged_or_expired_or_replaced_session_is_refused(self):
+        cookies = self.login()
+        good = cookies[self.console.COOKIE]
+        for bad in ('1.x.' + 'a' * 64, good[:-1] + ('0' if good[-1] != '0' else '1'), 'junk', ''):
+            self.assertNotIn('Add people', self.go('GET', '/admin', cookies={self.console.COOKIE: bad}).html)
+        self.assertIn('Add people', self.go('GET', '/admin', cookies=cookies).html)
+        self.a.console.now = lambda: NOW + self.console.SESSION + 1
+        self.assertNotIn('Add people', self.go('GET', '/admin', cookies=cookies).html)
+        self.a.console.now = lambda: NOW
+        self.a.store.set_login(self.console.new_login(self.PASSWORD))  # a new password logs everyone out
+        self.assertNotIn('Add people', self.go('GET', '/admin', cookies=cookies).html)
+
+    def test_a_change_needs_the_token_from_a_page_shown_to_that_session(self):
+        cookies = self.login()
+        self.assertEqual(self.go('POST', '/admin/add', {'people': 'ada@example.com'}, cookies).status, 404)
+        self.assertEqual(self.go('POST', '/admin/add', {'people': 'ada@example.com', 'c': 'guess'}, cookies).status, 404)
+        self.go('POST', '/admin/add', {'people': 'ada@example.com', 'c': self.csrf(cookies)}, {})  # no session at all
+        self.assertEqual(self.a.store.members, {})
+
+    def test_people_are_added_by_hand_without_a_confirmation_mail(self):
+        cookies = self.login()
+        people = 'ada@example.com Ada Lovelace\n# a comment\nBob Jones <BOB@example.com>\nnot an address\nada@example.com\n'
+        r = self.go('POST', '/admin/add', {'people': people, 'c': self.csrf(cookies)}, cookies)
+        self.assertIn('2 added, 1 already', r.html)
+        self.assertIn('not an address', r.html)
+        self.assertEqual(sorted(m['email'] for m in self.a.store.list_active()), ['ada@example.com', 'bob@example.com'])
+        self.assertEqual(self.a.mailer.sent, [])
+
+    def test_adding_stops_at_the_size_limit(self):
+        self.a = make_app(max_members=2)
+        self.a.store.set_login(self.console.new_login(self.PASSWORD))
+        cookies = self.login()
+        r = self.go('POST', '/admin/add', {'people': 'a@example.com\nb@example.com\nc@example.com', 'c': self.csrf(cookies)}, cookies)
+        self.assertIn('limit of 2', r.html)
+        self.assertEqual(self.a.store.count_active(), 2)
+
+    def test_remove_block_and_unblock(self):
+        with_members(self.a, 'ada')
+        cookies = self.login()
+        c = self.csrf(cookies)
+        self.go('POST', '/admin/block', {'e': 'ada@example.com', 'c': c}, cookies)
+        self.assertEqual(self.a.store.members['ada@example.com']['status'], 'blocked')
+        self.go('POST', '/admin/block', {'e': 'new@example.com', 'c': c}, cookies)  # blocking someone not on the list
+        self.assertEqual(self.a.store.members['new@example.com']['status'], 'blocked')
+        self.go('POST', '/admin/unblock', {'e': 'ada@example.com', 'c': c}, cookies)
+        self.assertEqual(self.a.store.members['ada@example.com']['status'], 'unsubscribed')
+        self.go('POST', '/admin/remove', {'e': 'ada@example.com', 'c': c}, cookies)
+        self.assertNotIn('ada@example.com', self.a.store.members)
+        self.assertIn('not an address', self.go('POST', '/admin/remove', {'e': 'x', 'c': c}, cookies).html)
+
+    def test_logging_out_clears_the_cookie(self):
+        cookies = self.login()
+        self.assertIn('Max-Age=0', self.go('POST', '/admin/logout', {'c': self.csrf(cookies)}, cookies).cookie)
+
+    def test_what_is_on_the_list_is_escaped_on_the_owner_page(self):
+        self.a.store.members['x@example.com'] = {'email': 'x@example.com', 'name': '<script>alert(1)</script>', 'status': 'active'}
+        html = self.go('GET', '/admin', cookies=self.login()).html
+        self.assertNotIn('<script>alert', html)
+        self.assertIn('&lt;script&gt;', html)
+
+    def test_the_owner_page_is_not_part_of_the_public_pages(self):
+        self.assertEqual(self.a.web('GET', '/admin', {}, {}, '', '')[0], 404)
+
+
+class Footer(unittest.TestCase):
+    def test_the_footer_names_the_sender_and_offers_a_link_to_share(self):
+        t = app.post_footer(app.Config(list_address=LIST), 'Ada <ada@example.com>', 'https://groups.example', 'https://groups.example/unsubscribe?e=x')
+        self.assertIn('from Ada <ada@example.com>', t)
+        self.assertIn('Send them to https://groups.example/', t)
+        self.assertIn('To leave the list: https://groups.example/unsubscribe?e=x', t)
+
+    def test_a_line_of_people_is_read_in_the_three_forms(self):
+        self.assertEqual(app.parse_person('Ada@Example.com'), ('ada@example.com', ''))
+        self.assertEqual(app.parse_person('ada@example.com, Ada L'), ('ada@example.com', 'Ada L'))
+        self.assertEqual(app.parse_person('Ada L <ada@example.com>'), ('ada@example.com', 'Ada L'))
+        self.assertEqual(app.parse_person('nonsense'), ('', 'nonsense'))
+        self.assertIsNone(app.parse_person('  # c'))
 
 
 if __name__ == '__main__':

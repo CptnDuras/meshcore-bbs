@@ -6,16 +6,19 @@
   admin.py remove ada@x.com    take someone off (and forget them)
   admin.py block spam@x.com    never mail them and refuse their posts
   admin.py unblock ada@x.com   let them sign up again
+  admin.py passwd [password]   set the password for the /admin page (made up for you and shown once if you give none)
 
 `add` skips the confirmation email: use it only for people who asked you to add them. TABLE (or the stack named by STACK, default meshgroup) says which table.
 """
 import os
+import secrets
 import sys
 import time
 
 import boto3
 
 import app
+import console
 from store import DynamoStore
 
 
@@ -27,32 +30,18 @@ def table():
     return DynamoStore(boto3.resource('dynamodb').Table(name))
 
 
-def parse_line(line):
-    line = line.strip()
-    if not line or line.startswith('#'):
-        return None
-    if '<' in line and '>' in line:  # Ada Lovelace <ada@example.com>
-        a = app.clean_address(line.split('<')[1].split('>')[0])
-        return (a, app.clean_name(line.split('<')[0])) if a else ('', line)
-    for sep in (',', '\t', ';'):
-        line = line.replace(sep, ' ')
-    first, _, rest = line.partition(' ')
-    a = app.clean_address(first)
-    return (a, app.clean_name(rest)) if a else ('', line)
-
-
 def main(argv):
     if len(argv) < 2:
         print(__doc__)
         return 2
     cmd, args, store = argv[1], argv[2:], None
-    if cmd in ('add', 'list', 'remove', 'block', 'unblock'):
+    if cmd in ('add', 'list', 'remove', 'block', 'unblock', 'passwd'):
         store = table()
     now = int(time.time())
     if cmd == 'add' and args:
         added = skipped = 0
         for line in open(args[0], encoding='utf-8'):
-            p = parse_line(line)
+            p = app.parse_person(line)
             if p is None:
                 continue
             if not p[0]:
@@ -65,6 +54,14 @@ def main(argv):
             store.add_active(p[0], p[1], now, note='added by the list owner')
             added += 1
         print(f'{added} added, {skipped} already on the list or blocked')
+    elif cmd == 'passwd':
+        password = args[0] if args else secrets.token_urlsafe(15)
+        if len(password) < 12:
+            print('A password needs at least 12 characters.')
+            return 2
+        store.set_login(console.new_login(password))
+        print('The owner password for /admin is now' + ('' if args else f':\n\n  {password}\n\nSave it; it is not kept anywhere in plain text.'))
+        print('Everyone logged in was logged out.')
     elif cmd == 'list':
         members = sorted(store.list_all(), key=lambda m: (m.get('status', ''), m['email']))
         for m in members:

@@ -3,6 +3,7 @@
     m#<address>   a member: status (pending, active, unsubscribed, bounced, complained, blocked), name, token, added, sent, expires
     ps#/pd#/sub#  counters that count up to a limit and then expire by themselves
     p#<message>   "this message was already handled"
+    admin#login   the owner's password hash and session key
 """
 import secrets
 from decimal import Decimal
@@ -26,6 +27,17 @@ class DynamoStore:
     def get_member(self, address):
         item = self.t.get_item(Key={'pk': 'm#' + address}).get('Item')
         return _plain(item) if item else None
+
+    def get_login(self):
+        """The owner's password hash and session key (see console.py), or None before one is set."""
+        item = self.t.get_item(Key={'pk': 'admin#login'}).get('Item')
+        return {'salt': item['salt'], 'hash': item['hash'], 'key': item['key']} if item else None
+
+    def set_login(self, record):
+        self.t.put_item(Item={'pk': 'admin#login', **record})
+
+    def put_blocked(self, address, now):
+        self.t.put_item(Item={'pk': 'm#' + address, 'email': address, 'name': '', 'token': '', 'status': 'blocked', 'added': now})
 
     def put_pending(self, address, name, token, now):
         """Records a sign-up that has not been confirmed; it disappears after three days if it never is."""

@@ -199,9 +199,26 @@ def verdict_reason(receipt, cfg):
     return ''
 
 
-def post_footer(cfg, who, unsubscribe_url):
-    return (f'\n\n--\nPosted to the {cfg.list_name} list by {who}. Reply to answer everyone on the list.\n'
+def post_footer(cfg, who, site, unsubscribe_url):
+    return (f'\n\n--\nThis message is from {who}, sent through the {cfg.list_name} list. Reply to answer everyone on the list.\n'
+            f'Know someone who would like to be on it? Send them to {site}/\n'
             f'To leave the list: {unsubscribe_url}\n')
+
+
+def parse_person(line):
+    """One line of a list of people: an address, an address and a name, or `Name <address>`. None for a blank or comment line;
+    ('', text) when the line holds no usable address; otherwise (address, name)."""
+    line = line.strip()
+    if not line or line.startswith('#'):
+        return None
+    if '<' in line and '>' in line:
+        a = clean_address(line.split('<')[1].split('>')[0])
+        return (a, clean_name(line.split('<')[0])) if a else ('', line)
+    for sep in (',', '\t', ';'):
+        line = line.replace(sep, ' ')
+    first, _, rest = line.partition(' ')
+    a = clean_address(first)
+    return (a, clean_name(rest)) if a else ('', line)
 
 
 class App:
@@ -210,6 +227,8 @@ class App:
     def __init__(self, cfg, store, mailer, objects, site_url=lambda: '', now=time.time, sleep=time.sleep, log=print):
         self.cfg, self.store, self.mailer, self.objects = cfg, store, mailer, objects
         self._site, self.now, self.sleep, self._log = site_url, now, sleep, log
+        from console import Console  # console.py uses this module's helpers, so it is imported here, not at the top
+        self.console = Console(cfg, store, now, log=self.log)
 
     def log(self, **kv):
         self._log(json.dumps(kv, default=str))
@@ -291,9 +310,10 @@ class App:
             return self._done(mid, 'rejected', reason='the list has had its posts for today', sender=sender)
         who = clean_name(name) or sender.split('@')[0]
         sent = failed = 0
+        site = self.site()
         for m in members:
             body = text + ('\n\n[Attachments were left out.]' if dropped else '') + post_footer(
-                cfg, f'{who} <{sender}>', self.unsubscribe_url(m))
+                cfg, f'{who} <{sender}>', site, self.unsubscribe_url(m))
             try:
                 self.mailer.send(
                     to=m['email'], subject=tag_subject(subject, cfg.tag), text=body,

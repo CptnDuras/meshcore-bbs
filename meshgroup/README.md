@@ -4,28 +4,36 @@
 web page. About the size of a groups.io list with none of the extras: no archive, no digests, no moderation queue.
 
 ```
-sign-up page (Lambda function URL) ──► DynamoDB (members, counters)
+groups.xerokuhl.com (API Gateway) ─► the Lambda ──► DynamoDB (members, counters)
 sender ─► MX ─► SES ─► S3 (7 days) + the same Lambda ─► checks ─► one SES message per member ─► bounces/complaints back (SNS) ─► the Lambda
 ```
 
-One Lambda (`handler.py`, Python 3.13) answers all three: mail SES received, bounce/complaint reports, and the web page. The rules are in
-`app.py` and know nothing about AWS; `store.py` is the DynamoDB table; `template.yaml` is everything else (one CloudFormation stack).
+One Lambda (`handler.py`, Python 3.13) answers all three: mail SES received, bounce/complaint reports, and the web pages (sign-up and owner).
+The Lambda has no public address of its own: the pages are served only at **https://groups.xerokuhl.com/** (API Gateway with a custom
+domain). The rules are in `app.py` and know nothing about AWS; `console.py` is the owner page; `store.py` is the DynamoDB table; `template.yaml` is everything else (one CloudFormation stack).
 
 ## Deploy
 
 ```
-DRY_RUN=1 meshgroup/deploy.sh      # checks the template, shows each step, changes nothing
-meshgroup/deploy.sh                # packages the code, deploys the stack, prints the sign-up page's address
+DRY_RUN=1 meshgroup/domain.sh      # shows each step, changes nothing
+meshgroup/domain.sh                # certificate + DNS + deploy + the groups.xerokuhl.com record (run it yourself: it changes your DNS)
+meshgroup/deploy.sh                # later updates: packages the code and updates the stack
 ```
 
-Then, by hand (they are your domain and your account): activate the SES rule set (the script prints the command), add the MX record
-`10 inbound-smtp.us-west-2.amazonaws.com` for `xerokuhl.com` (mail for the whole domain goes to SES; it accepts only the list address),
-and **request SES production access** (SES console → Account dashboard). In the sandbox SES delivers only to addresses you have verified, so
-the public cannot receive the list or its confirmation mails until that is granted. The domain identity needs its DNS records first
-(`tools/ses-setup.sh` in the repo root does that).
+`domain.sh` asks ACM for a certificate for `groups.xerokuhl.com`, adds the validation record, adds the SES records for `xerokuhl.com`
+(`tools/ses-dns.json`: DKIM, custom MAIL FROM, DMARC in monitor mode, and the MX `10 inbound-smtp.us-west-2.amazonaws.com` that sends list mail
+to SES, which accepts only the list address), runs `deploy.sh`, and points `groups.xerokuhl.com` at the page. Every step can be run again.
 
-Put your own people on without making them confirm: `python3 meshgroup/admin.py add people.txt` (one a line: an address, or an address and
-a name). Also `list`, `remove`, `block`, `unblock`.
+Also by hand: activate the SES rule set if the script says so, and **request SES production access** (SES console → Account dashboard). In the
+sandbox SES delivers only to addresses you have verified, so the public cannot receive the list or its confirmation mails until that is granted.
+
+## The owner page
+
+`https://groups.xerokuhl.com/admin`: add people (paste lines: an address, an address and a name, or `Name <address>`; they go on at once with
+no confirmation mail), remove, block and unblock. Set the password with `python3 meshgroup/admin.py passwd` (it makes one and shows it once;
+only a salted hash is kept, in the table; setting it again logs everyone out). Logins last eight hours (a signed cookie that is Secure,
+HttpOnly and SameSite=Strict); every change carries a token from the page that session was shown; failed logins are limited to 10 an hour per
+address. From a terminal the same things are `admin.py add people.txt`, `list`, `remove`, `block`, `unblock`.
 
 ## What it does
 
@@ -33,7 +41,8 @@ a name). Also `list`, `remove`, `block`, `unblock`.
   opens links joins no one). The page gives the same answer for every address, so it cannot be used to find out who is on the list. One
   confirmation a day per address; 5 per hour from one place and 20 an hour in all; a hidden field catches bots.
 - **Posting**: the message goes to every active member except the sender, one email each, from the list address as "Ada Lovelace via Mesh
-  Group", subject tagged `[meshgroup]`, text only (attachments are dropped and the post says so), with a footer and `List-Unsubscribe`. A reply
+  Group", subject tagged `[meshgroup]`, text only (attachments are dropped and the post says so). The footer says who the message is from, offers a link to share for signing up
+  (`https://groups.xerokuhl.com/`), and has the leave link (also sent as `List-Unsubscribe`). A reply
   goes to the whole list. `POSTING=members` makes it members-only.
 - **Leaving**: the footer link (same button page), or replying with just STOP.
 - **Turned away** (logged, never answered, so the list cannot be used to send mail to someone): automatic or bulk mail (Auto-Submitted, Precedence,
@@ -45,7 +54,7 @@ a name). Also `list`, `remove`, `block`, `unblock`.
 
 ## Settings (stack parameters / Lambda environment)
 
-`LIST_ADDRESS`, `LIST_NAME`, `SUBJECT_TAG`, `POSTING` (anyone | members), `SITE_URL` (if the page sits behind your own domain), `SEND_PAUSE`
+`LIST_ADDRESS`, `LIST_NAME`, `SUBJECT_TAG`, `POSTING` (anyone | members), `SITE_URL` (`https://` + the stack's DomainName), `SEND_PAUSE`
 (seconds between messages: 1.05 in the sandbox), and optional `MAX_MEMBERS`, `PER_SENDER_DAY`, `POSTS_DAY`, `MAX_BYTES`, `REQUIRE_SCAN`,
 `REQUIRE_AUTH`, `SUBSCRIBE_HOUR`, `SUBSCRIBE_IP_HOUR` (see `Config` in `app.py`).
 

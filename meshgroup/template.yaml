@@ -6,7 +6,8 @@ Parameters:
   ListName: {Type: String, Default: Mesh Group}
   SubjectTag: {Type: String, Default: '[meshgroup]'}
   Posting: {Type: String, Default: anyone, AllowedValues: [anyone, members]}
-  SiteUrl: {Type: String, Default: '', Description: 'Where the sign-up page is seen, if it sits behind your own domain; empty = the Lambda function URL'}
+  DomainName: {Type: String, Default: groups.xerokuhl.com, Description: 'Where the sign-up and owner pages are served'}
+  CertificateArn: {Type: String, Description: 'An issued ACM certificate for DomainName, in this region (domain.sh makes it)'}
   SendPause: {Type: String, Default: '1.05', Description: 'Seconds between messages to the list. 1.05 suits the SES sandbox (1 a second); lower it once SES is out of the sandbox.'}
   CodeBucket: {Type: String}
   CodeKey: {Type: String}
@@ -73,8 +74,6 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
                   - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/${ConfigSet}'
-              - {Effect: Allow, Action: 'lambda:GetFunctionUrlConfig', Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:meshgroup'}
-
   Function:
     Type: AWS::Lambda::Function
     Properties:
@@ -93,22 +92,46 @@ Resources:
           SUBJECT_TAG: !Ref SubjectTag
           POSTING: !Ref Posting
           SEND_PAUSE: !Ref SendPause
-          SITE_URL: !Ref SiteUrl
+          SITE_URL: !Sub 'https://${DomainName}'
           TABLE: !Ref Table
           BUCKET: !Ref Mailbox
           CONFIG_SET: !Ref ConfigSet
 
-  FunctionUrl:
-    Type: AWS::Lambda::Url
-    Properties: {AuthType: NONE, TargetFunctionArn: !GetAtt Function.Arn}
+  # The web pages are reached only through the list's own domain: the API has no address of its own, and the function has no public URL.
+  Api:
+    Type: AWS::ApiGatewayV2::Api
+    Properties: {Name: meshgroup, ProtocolType: HTTP, DisableExecuteApiEndpoint: true}
 
-  FunctionUrlPermission:
-    Type: AWS::Lambda::Permission
-    Properties: {Action: 'lambda:InvokeFunctionUrl', FunctionName: !Ref Function, Principal: '*', FunctionUrlAuthType: NONE}
+  ApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties: {ApiId: !Ref Api, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt Function.Arn, PayloadFormatVersion: '2.0'}
 
-  FunctionUrlInvoke: # a public function URL needs this one too (AWS began requiring both in late 2025)
+  ApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties: {ApiId: !Ref Api, RouteKey: '$default', Target: !Sub 'integrations/${ApiIntegration}'}
+
+  ApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref Api
+      StageName: '$default'
+      AutoDeploy: true
+      DefaultRouteSettings: {ThrottlingBurstLimit: 20, ThrottlingRateLimit: 10}
+
+  ApiMayInvoke:
     Type: AWS::Lambda::Permission
-    Properties: {Action: 'lambda:InvokeFunction', FunctionName: !Ref Function, Principal: '*', InvokedViaFunctionUrl: true}
+    Properties: {Action: 'lambda:InvokeFunction', FunctionName: !Ref Function, Principal: apigateway.amazonaws.com, SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*'}
+
+  Domain:
+    Type: AWS::ApiGatewayV2::DomainName
+    Properties:
+      DomainName: !Ref DomainName
+      DomainNameConfigurations: [{CertificateArn: !Ref CertificateArn, EndpointType: REGIONAL, SecurityPolicy: TLS_1_2}]
+
+  DomainMapping:
+    Type: AWS::ApiGatewayV2::ApiMapping
+    DependsOn: ApiStage
+    Properties: {DomainName: !Ref Domain, ApiId: !Ref Api, Stage: '$default'}
 
   SesMayInvoke:
     Type: AWS::Lambda::Permission
@@ -170,6 +193,9 @@ Resources:
           - LambdaAction: {FunctionArn: !GetAtt Function.Arn, InvocationType: Event}
 
 Outputs:
-  SignUpPage: {Value: !GetAtt FunctionUrl.FunctionUrl}
+  SignUpPage: {Value: !Sub 'https://${DomainName}/'}
+  OwnerPage: {Value: !Sub 'https://${DomainName}/admin'}
+  AliasTarget: {Value: !GetAtt Domain.RegionalDomainName, Description: 'what the DomainName record points at'}
+  AliasZone: {Value: !GetAtt Domain.RegionalHostedZoneId}
   Table: {Value: !Ref Table}
   Mailbox: {Value: !Ref Mailbox}

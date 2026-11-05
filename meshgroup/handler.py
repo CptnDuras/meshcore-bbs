@@ -1,5 +1,5 @@
 """The Lambda: the one place that talks to AWS. It answers three kinds of event: a message SES received for the list, a delivery
-report (bounce or complaint) from SES via SNS, and a web request for the sign-up page (a Lambda function URL)."""
+report (bounce or complaint) from SES via SNS, and a web request for the sign-up and owner pages (from API Gateway)."""
 import base64
 import json
 import os
@@ -54,26 +54,30 @@ def build():
         env = os.environ
         cfg = app.Config.from_env(env)
 
-        def own_url():
-            r = boto3.client('lambda').get_function_url_config(FunctionName=env['AWS_LAMBDA_FUNCTION_NAME'])
-            return r['FunctionUrl'].rstrip('/')
-
         _app = app.App(cfg, DynamoStore(boto3.resource('dynamodb').Table(env['TABLE'])),
                        Mailer(boto3.client('sesv2'), env.get('CONFIG_SET', '')),
-                       Objects(boto3.client('s3'), env['BUCKET']), site_url=own_url)
+                       Objects(boto3.client('s3'), env['BUCKET']))
     return _app
 
 
 def web(a, event):
+    """The page for one web request: (status, html, cookie, location)."""
     http = event['requestContext']['http']
+    owner = http['path'] == '/admin' or http['path'].startswith('/admin/')
     body = event.get('body') or ''
-    if len(body) > 8192:
-        return 413, 'too large'
+    if len(body) > (65536 if owner else 8192):
+        return 413, 'too large', '', ''
     if event.get('isBase64Encoded'):
         body = base64.b64decode(body).decode('utf-8', 'replace')
-    one = lambda q: {k: v[0] for k, v in parse_qs(q or '', max_num_fields=20).items()}
-    return a.web(http['method'], http['path'], one(event.get('rawQueryString')), one(body),
-                 http.get('sourceIp', ''), event['requestContext'].get('domainName', ''))
+    one = lambda q: {k: v[0] for k, v in parse_qs(q or '', max_num_fields=600 if owner else 20).items()}
+    ip = http.get('sourceIp', '')
+    if owner:
+        cookies = dict(c.split('=', 1) for c in event.get('cookies') or [] if '=' in c)
+        r = a.console.handle(http['method'], http['path'], one(body), ip, cookies)
+        return r.status, r.html, r.cookie, r.location
+    status, html = a.web(http['method'], http['path'], one(event.get('rawQueryString')), one(body), ip,
+                         event['requestContext'].get('domainName', ''))
+    return status, html, '', ''
 
 
 def lambda_handler(event, context):
@@ -84,9 +88,13 @@ def lambda_handler(event, context):
     if records and records[0].get('EventSource') == 'aws:sns':
         return {'suppressed': sum(a.delivery_event(json.loads(r['Sns']['Message'])) for r in records)}
     if 'requestContext' in event:
-        status, html = web(a, event)
-        return {'statusCode': status,
-                'headers': {'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': CSP,
-                            'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store'},
-                'body': html}
+        status, html, cookie, location = web(a, event)
+        headers = {'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff',
+                   'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store'}
+        if location:
+            headers['Location'] = location
+        reply = {'statusCode': status, 'headers': headers, 'body': html}
+        if cookie:
+            reply['cookies'] = [cookie]
+        return reply
     return {'error': 'unknown event'}
