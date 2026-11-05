@@ -514,8 +514,11 @@ class Owner(unittest.TestCase):
     def go(self, method, path, form=None, cookies=None, ip='9.9.9.9'):
         return self.a.console.handle(method, path, form or {}, ip, cookies or {})
 
+    def code(self, offset=0):
+        return self.console.totp(self.a.store.get_login()['totp'], NOW // 30 + offset)
+
     def login(self):
-        r = self.go('POST', '/admin/login', {'password': self.PASSWORD})
+        r = self.go('POST', '/admin/login', {'password': self.PASSWORD, 'code': self.code()})
         self.assertEqual((r.status, r.location), (303, '/admin'))
         return {self.console.COOKIE: r.cookie.split(';')[0].split('=', 1)[1]}
 
@@ -531,8 +534,8 @@ class Owner(unittest.TestCase):
         self.assertNotIn('Add people', html)
 
     def test_the_password_logs_in_and_a_wrong_one_does_not(self):
-        self.assertEqual(self.go('POST', '/admin/login', {'password': 'nope'}).status, 401)
-        r = self.go('POST', '/admin/login', {'password': self.PASSWORD})
+        self.assertEqual(self.go('POST', '/admin/login', {'password': 'nope', 'code': self.code()}).status, 401)
+        r = self.go('POST', '/admin/login', {'password': self.PASSWORD, 'code': self.code()})
         for part in ('Secure', 'HttpOnly', 'SameSite=Strict', 'Path=/'):
             self.assertIn(part, r.cookie)
         self.assertTrue(r.cookie.startswith('__Host-mg='))
@@ -540,8 +543,35 @@ class Owner(unittest.TestCase):
     def test_logins_are_limited_per_address(self):
         for _ in range(10):
             self.go('POST', '/admin/login', {'password': 'nope'})
-        self.assertEqual(self.go('POST', '/admin/login', {'password': self.PASSWORD}).status, 429)
-        self.assertEqual(self.go('POST', '/admin/login', {'password': self.PASSWORD}, ip='8.8.8.8').status, 303)
+        form = {'password': self.PASSWORD, 'code': self.code()}
+        self.assertEqual(self.go('POST', '/admin/login', form).status, 429)
+        self.assertEqual(self.go('POST', '/admin/login', form, ip='8.8.8.8').status, 303)
+
+    def test_the_password_alone_is_not_enough(self):
+        for form in ({'password': self.PASSWORD}, {'password': self.PASSWORD, 'code': '123456'}, {'password': self.PASSWORD, 'code': ''},
+                     {'password': 'nope', 'code': self.code()}):
+            r = self.go('POST', '/admin/login', form)
+            self.assertEqual((r.status, r.cookie), (401, ''))
+            self.assertIn('password or the code', r.html)  # the same words whichever was wrong
+
+    def test_a_code_works_once_and_a_neighbouring_step_is_allowed_but_not_a_stale_one(self):
+        form = {'password': self.PASSWORD, 'code': self.code()}
+        self.assertEqual(self.go('POST', '/admin/login', form).status, 303)
+        self.assertEqual(self.go('POST', '/admin/login', form).status, 401)  # the same code again
+        self.assertEqual(self.go('POST', '/admin/login', {**form, 'code': self.code(-1)}).status, 303)  # a clock a little slow
+        self.assertEqual(self.go('POST', '/admin/login', {**form, 'code': self.code(-2)}).status, 401)
+        self.assertEqual(self.go('POST', '/admin/login', {**form, 'code': ' '.join([self.code(1)[:3], self.code(1)[3:]])}).status, 303)  # typed with a space
+
+    def test_the_known_codes_for_the_rfc_6238_test_secret(self):
+        secret = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ'  # "12345678901234567890"
+        self.assertEqual(self.console.totp(secret, 59 // 30), '287082')
+        self.assertEqual(self.console.totp(secret, 1111111109 // 30), '081804')
+
+    def test_an_old_record_with_no_authenticator_locks_the_page_instead_of_letting_the_password_in(self):
+        old = self.console.new_login(self.PASSWORD)
+        del old['totp']
+        self.a.store.set_login(old)
+        self.assertEqual(self.go('POST', '/admin/login', {'password': self.PASSWORD}).status, 503)
 
     def test_a_forged_or_expired_or_replaced_session_is_refused(self):
         cookies = self.login()

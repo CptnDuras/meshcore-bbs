@@ -59,9 +59,12 @@ def main(argv):
         if len(password) < 12:
             print('A password needs at least 12 characters.')
             return 2
-        store.set_login(console.new_login(password))
+        login = console.new_login(password)
+        store.set_login(login)
         print('The owner password for /admin is now' + ('' if args else f':\n\n  {password}\n\nSave it; it is not kept anywhere in plain text.'))
-        print('Everyone logged in was logged out.')
+        print('\nLogging in also takes the six-digit code from an authenticator app. Add it with this link (or type the secret in):\n')
+        print(f'  {console.otp_uri(login["totp"], "meshgroup")}\n  secret: {login["totp"]}')
+        print('\nEveryone logged in was logged out.')
     elif cmd == 'list':
         members = sorted(store.list_all(), key=lambda m: (m.get('status', ''), m['email']))
         for m in members:

@@ -55,6 +55,7 @@ def admin_login(message=''):
     note = f'<p><strong>{h(message)}</strong></p>' if message else ''
     return page('Owner login', f"""{NOINDEX}<h1>Owner login</h1>{note}
 <form method="post" action="/admin/login"><label>Password<input name="password" type="password" required autocomplete="current-password"></label>
+<label>Code from your authenticator app<input name="code" inputmode="numeric" pattern="[0-9 ]{{6,7}}" maxlength="7" required autocomplete="one-time-code"></label>
 <button type="submit">Log in</button></form>""")
 
 

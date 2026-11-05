@@ -29,9 +29,9 @@ class DynamoStore:
         return _plain(item) if item else None
 
     def get_login(self):
-        """The owner's password hash and session key (see console.py), or None before one is set."""
+        """The owner's password hash, authenticator secret and session key (see console.py), or None before one is set."""
         item = self.t.get_item(Key={'pk': 'admin#login'}).get('Item')
-        return {'salt': item['salt'], 'hash': item['hash'], 'key': item['key']} if item else None
+        return {k: item[k] for k in ('salt', 'hash', 'key', 'totp') if k in item} if item else None
 
     def set_login(self, record):
         self.t.put_item(Item={'pk': 'admin#login', **record})

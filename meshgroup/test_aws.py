@@ -94,12 +94,15 @@ class AwsTests(unittest.TestCase):
     def test_the_owner_page_through_the_api_shape(self):
         import console
         from urllib.parse import quote
-        self.store.set_login(console.new_login('correct horse battery'))
+        import time
+        record = console.new_login('correct horse battery')
+        self.store.set_login(record)
+        code = console.totp(record['totp'], int(time.time()) // 30)
         ev = lambda m, p, body='', cookies=None: {'requestContext': {'http': {'method': m, 'path': p, 'sourceIp': '1.2.3.4'}, 'domainName': 'groups.example'},
                                                   'rawQueryString': '', 'body': body, 'cookies': cookies or [], 'isBase64Encoded': False}
-        r = self.handler.lambda_handler(ev('POST', '/admin/login', 'password=wrong'), None)
+        r = self.handler.lambda_handler(ev('POST', '/admin/login', f'password=correct+horse+battery&code=000000'), None)
         self.assertEqual(r['statusCode'], 401)
-        r = self.handler.lambda_handler(ev('POST', '/admin/login', 'password=correct+horse+battery'), None)
+        r = self.handler.lambda_handler(ev('POST', '/admin/login', f'password=correct+horse+battery&code={code}'), None)
         self.assertEqual((r['statusCode'], r['headers']['Location']), (303, '/admin'))
         cookie = r['cookies'][0].split(';')[0]
         page = self.handler.lambda_handler(ev('GET', '/admin', cookies=[cookie]), None)['body']
