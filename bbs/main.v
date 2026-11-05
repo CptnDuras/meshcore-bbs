@@ -44,10 +44,6 @@ fn main() {
 	mut emailer := open_email_worker(engine.store, fn (s string) {
 		println(s)
 	})
-	// --- posting by email: mail sent to the list address is passed on to the group (off unless the settings name a bucket and a group) ---
-	mut inbound := open_inbound_worker(engine.store, fn (s string) {
-		println(s)
-	})
 
 	// --- radio ---
 	println('meshbbs starting on ${port} (db=${db_cfg}) ...')
@@ -275,7 +271,6 @@ fn main() {
 
 		// Email groups: at most one queued message a second (SES's sending rate).
 		emailer.tick(now)
-		inbound.tick(now) // once a minute: looks for mail sent to the list address
 			mc.send_advert(true) or { eprintln('periodic flood advert failed: ${err}') }
 			last_advert = now
 			println('[advert] periodic flood advert sent')

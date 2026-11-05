@@ -15,43 +15,7 @@ pub const groups_columns = ['id', 'name', 'descr', 'created']
 pub const members_columns = ['id', 'group_name', 'email', 'name', 'status', 'note', 'added', 'last_sent',
 	'last_error']
 pub const outbox_columns = ['id', 'to_addr', 'subject', 'body', 'group_name', 'created', 'status',
-	'attempts', 'next_try', 'last_error', 'sent_ts', 'message_id', 'from_name', 'list_post']
-
-// Mail people send to the list address (bbs/inbound_worker.v): the record of every message looked at, the senders the sysop has blocked, and a few
-// switches. The web UI shows the first, edits the second and flips the third.
-pub const inbound_columns = ['id', 's3_key', 'message_id', 'from_addr', 'from_name', 'subject',
-	'received', 'status', 'reason', 'recipients']
-pub const blocks_columns = ['id', 'pattern', 'note', 'added']
-pub const settings_columns = ['id', 'key', 'val']
-
-// what became of an incoming message
-pub const inbound_posting = 'posting' // being passed on (stays this way if the daemon stopped half way)
-pub const inbound_posted = 'posted' // passed on to the list
-pub const inbound_stopped = 'stopped' // was a request to be taken off the list, and the sender was
-pub const inbound_rejected = 'rejected' // turned away; `reason` says why
-pub const inbound_failed = 'failed' // could not be read or fetched
-
-// the switch that pauses posting by email
-pub const setting_inbound_paused = 'inbound_paused'
-
-// What the daemon tells the web UI about posting by email, so the page can show it without reading the settings file (which holds the AWS key).
-pub const setting_inbound_address = 'inbound_address' // the list address; empty when posting by email is not set up
-pub const setting_inbound_group = 'inbound_group'
-pub const setting_inbound_poll = 'inbound_poll' // when the mailbox was last looked in (epoch seconds)
-pub const setting_inbound_error = 'inbound_error' // what went wrong the last time, or empty
-
-// A pattern for the block list: one address, or "@domain.example" for everyone at a domain.
-pub fn valid_block_pattern(p string) bool {
-	if p.contains('*') {
-		return false // no wildcards: a pattern that looks like one would match nothing and block no one
-	}
-	if p.starts_with('@') {
-		d := p[1..]
-		return d.len >= 3 && d.len <= 253 && d.contains('.') && !d.starts_with('.') && !d.ends_with('.') && !d.contains('..')
-			&& d.bytes().all(it.is_alnum() || it == `.` || it == `-`)
-	}
-	return valid_email(p)
-}
+	'attempts', 'next_try', 'last_error', 'sent_ts', 'message_id']
 
 // no control characters in a value: a newline in anything bound for a mail header could start a second header
 pub fn plain_value(v string) bool {

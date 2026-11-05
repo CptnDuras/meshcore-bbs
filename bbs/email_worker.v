@@ -61,13 +61,7 @@ fn (mut w EmailWorker) tick(now i64) bool {
 		w.store.mark_email_failed(m.id, 'not an email address') or {}
 		return true
 	}
-	r := w.sender.send(EmailMsg{
-		to:        m.to_addr
-		subject:   m.subject
-		text:      m.body
-		list_post: m.list_post
-		from_name: m.from_name
-	}, now)
+	r := w.sender.send(EmailMsg{ to: m.to_addr, subject: m.subject, text: m.body }, now)
 	match r.outcome {
 		.sent {
 			w.store.mark_email_sent(m.id, r.message_id, now) or {}

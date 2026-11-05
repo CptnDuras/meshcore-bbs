@@ -56,41 +56,4 @@ pub mut:
 	last_error string
 	sent_ts    i64
 	message_id string
-	from_name  string // for a post to the list, the poster's name; '' for a notice
-	list_post  bool   // sent from the list address with the list headers (see ses_request)
-}
-
-// Every message that arrived at the list address and was looked at, kept as the record of what was done with it (and so that one is never handled twice).
-@[table: 'email_inbound']
-pub struct EmailInbound {
-pub mut:
-	id         int    @[primary; sql: serial]
-	s3_key     string @[unique]
-	message_id string
-	from_addr  string
-	from_name  string
-	subject    string
-	received   i64
-	status     string // emaillist.inbound_*
-	reason     string // why it was turned away or could not be handled
-	recipients int    // how many emails a post became
-}
-
-// A sender the sysop does not want posts from: an exact address ("spam@example.com") or a whole domain ("@example.com").
-@[table: 'email_blocks']
-pub struct EmailBlock {
-pub mut:
-	id      int    @[primary; sql: serial]
-	pattern string @[unique]
-	note    string
-	added   i64
-}
-
-// A few switches (see emaillist.setting_*).
-@[table: 'email_settings']
-pub struct EmailSetting {
-pub mut:
-	id  int    @[primary; sql: serial]
-	key string @[unique]
-	val string
 }

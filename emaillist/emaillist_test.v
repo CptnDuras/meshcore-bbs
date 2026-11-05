@@ -75,16 +75,6 @@ fn test_a_name_cannot_carry_markup_or_a_line_break() {
 	assert clean_name('a'.repeat(100)).len == 60
 }
 
-fn test_a_block_is_an_address_or_a_whole_domain() {
-	for p in ['spam@example.com', '@example.com', '@mail.example.co.uk', '@a-b.example.org'] {
-		assert valid_block_pattern(p), p
-	}
-	for p in ['', '@', '@com', '@.example.com', '@example.com.', '@exa mple.com', '@ex..ample.com',
-		'example.com', '*@example.com', 'a@b', '@example.com\nBcc: x', '@@example.com'] {
-		assert !valid_block_pattern(p), p
-	}
-}
-
 fn test_the_member_states_are_the_words_the_tables_hold() {
 	assert [member_active, member_unsubscribed, member_rejected] == ['active', 'unsubscribed',
 		'rejected']

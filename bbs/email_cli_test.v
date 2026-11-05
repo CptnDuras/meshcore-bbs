@@ -167,51 +167,6 @@ fn test_opening_a_worker_with_settings_turns_email_on() {
 	assert w.disabled == false
 }
 
-// log lines held by reference, so a closure handed it can add to them
-struct CliLog {
-mut:
-	lines []string
-}
-
-fn (mut l CliLog) add(s string) {
-	l.lines << s
-}
-
-fn inbound_with_settings(text string) (InboundWorker, []string) {
-	path := temp_list('inbound.conf', text)
-	os.setenv('MESHBBS_SES', path, true)
-	defer {
-		os.unsetenv('MESHBBS_SES')
-		os.rm(path) or {}
-	}
-	rec := &CliLog{}
-	w := open_inbound_worker(cli_store(), fn [rec] (s string) {
-		rec.add(s)
-	})
-	return w, rec.lines
-}
-
-fn test_posting_by_email_is_off_without_settings_or_without_a_bucket_and_a_group() {
-	os.setenv('MESHBBS_SES', '/nonexistent/ses.conf', true)
-	defer {
-		os.unsetenv('MESHBBS_SES')
-	}
-	rec := &CliLog{}
-	mut none_at_all := open_inbound_worker(cli_store(), fn [rec] (s string) {
-		rec.add(s)
-	})
-	assert none_at_all.disabled && rec.lines[0].contains('no SES settings')
-	assert none_at_all.tick(1000) == false
-	partial, lines := inbound_with_settings('access_key_id=AK\nsecret_access_key=SK\nfrom=mesh@xerokuhl.com\ninbound_group=mesh\n')
-	assert partial.disabled && lines[0].contains('no inbound_bucket and inbound_group')
-}
-
-fn test_posting_by_email_is_on_when_the_settings_name_a_bucket_and_a_group() {
-	w, lines := inbound_with_settings('access_key_id=AK\nsecret_access_key=SK\nfrom=mesh@xerokuhl.com\nlist_address=meshbbs@xerokuhl.com\nreply_to=sysop@example.com\ninbound_bucket=my-mail-bucket\ninbound_group=mesh\n')
-	assert !w.disabled && w.settings.address == 'meshbbs@xerokuhl.com' && w.settings.group == 'mesh' && w.contact == 'sysop@example.com'
-	assert lines[0] == '[inbound] taking in mail sent to meshbbs@xerokuhl.com from s3://my-mail-bucket/inbound/ for the mesh list'
-}
-
 fn test_a_disabled_worker_sends_nothing_and_keeps_the_queue() {
 	mut st := cli_store()
 	st.enqueue_email('a@example.com', 's', 'b', 'g', 1) or { panic(err) }

@@ -65,39 +65,6 @@ fn open_email_worker(store Store, log fn (string)) EmailWorker {
 	}
 }
 
-// The worker that takes in mail sent to the list address. Off, with the reason in the log, unless the settings file names an S3 bucket and a group.
-fn open_inbound_worker(store Store, log fn (string)) InboundWorker {
-	path := ses_config_path()
-	// the web page says "not set up" when there is no address here; clear one left from an earlier run
-	mut st := store
-	st.set_email_setting(emaillist.setting_inbound_address, '') or {}
-	cfg := load_ses_config(path) or {
-		log('[inbound] no SES settings, so posting by email is off')
-		return InboundWorker{
-			store:    store
-			disabled: true
-		}
-	}
-	s := inbound_settings(cfg) or {
-		log('[inbound] posting by email is off (the SES settings have no inbound_bucket and inbound_group)')
-		return InboundWorker{
-			store:    store
-			disabled: true
-		}
-	}
-	log('[inbound] taking in mail sent to ${s.address} from s3://${s.bucket}/${s.prefix} for the ${s.group} list')
-	return InboundWorker{
-		store:    store
-		objects:  S3Store{
-			cfg:    cfg
-			sender: &HttpsSender{}
-		}
-		settings: s
-		contact:  cfg.reply_to
-		log:      log
-	}
-}
-
 const email_cli_usage = 'meshbbs email [--db <db>] import <group> <file> [note] | groups | members <group> | test <address>'
 
 // -> the text to print and the exit code. `sender` is how a test message is sent.

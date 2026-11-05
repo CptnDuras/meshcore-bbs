@@ -13,10 +13,13 @@ scheduler ──target_kind=email──► outbound queue ─┘            (1 a
 shell     ──meshbbs email import / test──────────────────────────────────────────┘
 ```
 
-- **No V TLS, no SDK.** The daemon's host has no working V TLS, so (like `wx.v` and `news.v`) HTTPS goes through
-  `curl`. `sigv4.v` signs the request in V (ported from the planner service, same AWS test vectors); `ses.v` builds the
-  SES v2 `SendEmail` call and hands it to `CurlSender`, which keeps the signed headers and the message in
-  mode-600 temp files.
+- **No SDK.** `sigv4.v` signs the request in V (ported from the planner service, same AWS test vectors); `ses.v` builds
+  the SES v2 `SendEmail` call and hands it to `HttpsSender` (`httpclient.v`), which speaks HTTPS with V's `net.mbedtls`
+  and checks the certificate against the same CA bundle as MQTT. It exists instead of `net.http` because V's dial has no
+  connect timeout, and these calls run in the loop that also drives the radio: here the connect is non-blocking and
+  polled (8 s), the whole request has a 30 s deadline, and SIGPIPE is ignored so a connection the server already closed
+  cannot end the process. (The older pollers still use `curl`; the notes in `wx.v` about V's TLS crashing no longer
+  reproduce on V 0.5.2 / FreeBSD 15.)
 - **No x.json2.** It crashed on FreeBSD (see `minijson.v`), so JSON is written by `json_str` (ses.v) and read by
   `minijson`. (Fixing this also fixed `\uXXXX` escapes in `minijson`, which used to fail the whole document.)
 - **One message a second**, which is SES's sending rate in the sandbox. The main loop already ticks once a second
@@ -92,65 +95,22 @@ group name is emailed to that group instead of sent on the air; its first line b
 digest/news/fortune sources can go to a group.
 
 **Not done yet:** the web UI's schedule form does not offer `email` as a target (rows can be added to
-`scheduled_messages` directly), and the NWS alerts are not copied to a group.
+`scheduled_messages` directly), and the NWS alerts are not copied to a group. Inbound email (replying to post or to
+unsubscribe automatically) needs SES receiving and a poller; today the sysop handles STOP replies with `GROUP <g> STOP`.
 
-## Posting by email: anyone can write to the list address
+## The public mailing list is separate
 
-Anyone who writes to **meshbbs@xerokuhl.com** (the `list_address`) has their message passed on to everyone on the group named by
-`inbound_group`, from that same address, signed "Ada Lovelace via Buffalo Mesh". A reply goes back to the list.
-
-```
-sender ──► MX (SES, us-west-2) ──► receipt rule: scan spam + viruses ──► S3 bucket (private, empties itself in 14 days)
-daemon, once a minute:  list ─► fetch ─► read (mime.v) ─► decide (inbound.v) ─► queue one email per member ─► delete from the bucket
-```
-
-Because anyone can write, the rules in `inbound.v` are what keep the list from being used against its members. A message is
-**turned away** (the reason is written down and shown on the web page) if it is:
-
-| Reason | How it is told |
-|---|---|
-| paused | the **Pause posting** switch on the web page (people can still ask to be taken off) |
-| too large / no text / no sender | over `inbound_max_bytes` (default 1 MB), empty, or no usable From address |
-| the list's own mail | from the list address, or carrying our `X-Loop` header |
-| automatic or bulk mail (this is how mail loops start) | `Auto-Submitted`, `Precedence: bulk/list/junk`, `X-Auto-Response-Suppress`, `List-Id`/`List-Unsubscribe`, delivery reports, empty return path, no-reply and postmaster senders |
-| a blocked sender | an address or a whole `@domain` on the block list (web page) |
-| not cleared by SES's scans | `X-SES-Spam-Verdict` and `X-SES-Virus-Verdict` must both be `PASS`; `FAIL` is always refused, and so is a missing or `GRAY` verdict unless `inbound_require_scan=0` |
-| not shown to come from where it says | `Authentication-Results` needs `dmarc=pass`, or `dkim=pass`/`spf=pass` for the From domain; `dmarc=fail` is always refused (`inbound_require_auth=0` to relax) |
-| over a limit | `inbound_per_sender_day` posts from one sender a day (3), `inbound_posts_day` in all (20), never more posts than the account's daily sending cap allows for the size of the list, and nothing while the sending queue is already full |
-
-Only text is passed on: attachments are dropped (and the post says so), HTML is reduced to its words, and the subject gets the
-tag (`[mesh]`) once. The message is deleted from the bucket as soon as it has been dealt with; the database keeps only who
-sent it, the subject, what was done and why (90 days).
-
-**STOP.** A message whose first line is just STOP / unsubscribe / remove me (or whose subject is, with nothing in the body) is
-not a post: it takes that sender off the list and they get a short confirmation. This only counts from a sender that passed
-the same checks, and it works while posting is paused. (The footer of every email tells people to reply STOP, and a notice's
-reply would otherwise go to the whole list.)
-
-**Handled once.** Each message gets a database row before anything is done with it, so it is never passed on twice, even if
-the daemon stops half way (the row then stays `posting` for the sysop to see) or the delete from the bucket fails.
-
-Set it up with `tools/ses-inbound-setup.sh` (`DRY_RUN=1` first). It makes the bucket, the SES receipt rule, the MX record and
-the daemon's read access, and adds `list_address`, `inbound_bucket` and `inbound_group` to the settings file. It will not
-replace an existing MX record, and it adds to an active SES rule set rather than switching it. Note that **the MX is for the
-whole domain**: afterwards SES receives every address @xerokuhl.com and accepts only the list address.
-
-Costs: SES charges about $0.10 per thousand messages received; the bucket holds a few kilobytes for a minute. Mail sent *out*
-counts against the 200 a day.
-
-Things to check on the first real message (the web page's **Posts by email** shows what happened to each message and why):
-the exact verdict and `Authentication-Results` headers SES writes (the rules above read them as documented; if mail is being
-turned away as "not cleared" or "could not be verified", look at one message in the bucket and adjust), and that SES accepts the
-`List-Id`/`Precedence`/`X-Loop` headers on a send.
+Letting anyone write to a list address, and letting people sign themselves up, is **not** done by the daemon. That is
+`meshgroup/` (Python Lambdas, DynamoDB and SES, deployed with `meshgroup/deploy.sh`; see `meshgroup/README.md`). The two
+share nothing but SES: a BBS notice can go to the list by emailing its address from the sysop's address.
 
 ## Files
 
-`sigv4.v`, `ses.v` (SES), `s3.v` (the bucket), `mime.v` (reading a message), `inbound.v` (the rules), `inbound_worker.v` (the poller),
-`email_models.v`, `store_email.v` (tables), `email_groups.v` (parsing, commands, fan-out),
-`email_worker.v` (queue), `email_cli.v` (`meshbbs email`), `cmd_email.v` (registration), `tools/ses-setup.sh`, `tools/ses-inbound-setup.sh`,
+`sigv4.v`, `ses.v` (SES), `email_models.v`, `store_email.v` (tables), `email_groups.v` (parsing, commands, fan-out),
+`email_worker.v` (queue), `email_cli.v` (`meshbbs email`), `cmd_email.v` (registration), `tools/ses-setup.sh`,
 `emaillist/` (shared rules), `webui/email_ui.v` + `webui/templates/email.html` (the page).
-Tests: `sigv4_test.v`, `ses_test.v`, `s3_test.v`, `mime_test.v`, `inbound_test.v`, `inbound_worker_test.v`, `email_groups_test.v`,
-`email_worker_test.v`, `email_cli_test.v`, `email_store_test.v`, `minijson_test.v`, `emaillist/emaillist_test.v`, `webui/email_ui_test.v`.
+Tests: `sigv4_test.v`, `ses_test.v`, `email_groups_test.v`, `email_worker_test.v`, `email_cli_test.v`, `email_store_test.v`,
+`minijson_test.v`, `emaillist/emaillist_test.v`, `webui/email_ui_test.v`.
 
 A note for anyone writing a web UI page: `@{...}` in a veb template is HTML-escaped by the V build this was written on, so
 `@{h(x)}` shows people `&amp;#39;`. `email_ui.v` escapes once in `esc()` and passes `veb.RawHtml`, which no build escapes again.

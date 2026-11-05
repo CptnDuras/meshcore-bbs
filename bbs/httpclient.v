@@ -343,7 +343,8 @@ mut:
 	started bool
 }
 
-fn (mut c HttpsSender) request(method string, url string, headers map[string]string, body string) HttpReply {
+fn (mut c HttpsSender) post(url string, headers map[string]string, body string) HttpReply {
+	method := 'POST'
 	if !c.started {
 		c.started = true
 		// A TLS write to a connection the other end has already closed would end the process with SIGPIPE (the "crash" the older pollers were written around).

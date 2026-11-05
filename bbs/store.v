@@ -147,21 +147,6 @@ mut:
 	count_emails_sent_since(since i64) int
 	recent_failed_emails(limit int) []EmailOutbox
 	prune_emails(before i64) !
-	enqueue_post_email(to_addr string, subject string, body string, group string, from_name string, now i64) !
-	// mail sent to the list address: the record, the blocked senders, the switches
-	inbound_begin(s3_key string, now i64) !bool
-	inbound_finish(s3_key string, mail_id string, from_addr string, from_name string, subject string, status string, reason string, recipients int) !
-	inbound_status(s3_key string) string
-	count_inbound(status string, since i64) int
-	count_posts_by(from_addr string, since i64) int
-	recent_inbound(limit int) []EmailInbound
-	prune_inbound(before i64) !
-	add_email_block(pattern string, note string, now i64) !bool
-	remove_email_block(pattern string) !
-	list_email_blocks() []EmailBlock
-	is_blocked_sender(addr string) bool
-	get_email_setting(key string) string
-	set_email_setting(key string, val string) !
 	// proactive mail-notice guard
 	get_mail_notice(handle string) ?MailNotice
 	record_mail_notice(handle string, count int, now i64) !
@@ -235,9 +220,6 @@ pub fn (mut s SqliteStore) migrate() ! {
 		create table EmailGroup
 		create table EmailMember
 		create table EmailOutbox
-		create table EmailInbound
-		create table EmailBlock
-		create table EmailSetting
 		create table WxAlertSent
 		create table AlertSetting
 		create table AlertRequest
@@ -257,9 +239,6 @@ pub fn (mut s SqliteStore) migrate() ! {
 	s.add_column_if_missing('scheduled_messages', 'source', "TEXT NOT NULL DEFAULT 'static'")!
 	s.add_column_if_missing('alert_requests', 'target', "TEXT NOT NULL DEFAULT ''")!
 	s.add_column_if_missing('sessions', 'greeted', 'INTEGER NOT NULL DEFAULT 0')!
-	// the outbox of a database made before posting by email existed (appended, so the column order is the same as a new one)
-	s.add_column_if_missing('email_outbox', 'from_name', "TEXT NOT NULL DEFAULT ''")!
-	s.add_column_if_missing('email_outbox', 'list_post', 'INTEGER NOT NULL DEFAULT 0')!
 }
 
 // add_column_if_missing adds a column to a table only when it does not already
