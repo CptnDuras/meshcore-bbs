@@ -202,7 +202,8 @@ mut:
 	headers []map[string]string
 }
 
-fn (mut f FakeSender) post(url string, headers map[string]string, body string) HttpReply {
+fn (mut f FakeSender) request(method string, url string, headers map[string]string, body string) HttpReply {
+	assert method == 'POST'
 	f.calls << url + ' ' + body
 	f.headers << headers
 	return HttpReply{
@@ -236,4 +237,74 @@ fn test_the_mailer_passes_a_refusal_through() {
 		sender: fake
 	}
 	assert m.send(EmailMsg{ to: 'friend@example.com', subject: 'Hi', text: 'x' }, 0).outcome == .rejected
+}
+
+// ---- posts to the list ----
+
+fn list_conf() SesConfig {
+	return parse_ses_config('${good_conf}list_address=MeshBBS@xerokuhl.com\nlist_name=Buffalo Mesh\n') or { panic(err) }
+}
+
+fn test_a_post_comes_from_the_list_address_signed_with_the_posters_name() {
+	req := ses_request(list_conf(), EmailMsg{
+		to:        'friend@example.com'
+		subject:   '[mesh] Net tonight'
+		text:      'Net at 7.'
+		list_post: true
+		from_name: 'Ada Lovelace'
+	}, 0)
+	doc := parse_json(req.body) or { panic('body is not json') }
+	assert doc.str_of('FromEmailAddress') == '"Ada Lovelace via Buffalo Mesh" <meshbbs@xerokuhl.com>'
+	assert doc.str_of('ReplyToAddresses') == '' && doc.get('ReplyToAddresses').arr.len == 0 // a reply goes to the From: the list
+}
+
+fn test_a_post_carries_the_list_headers_that_stop_loops() {
+	req := ses_request(list_conf(), EmailMsg{
+		to:        'friend@example.com'
+		subject:   's'
+		text:      't'
+		list_post: true
+		from_name: 'Ada'
+	}, 0)
+	doc := parse_json(req.body) or { panic('body is not json') }
+	hs := doc.get('Content').get('Simple').get('Headers').arr
+	got := hs.map('${it.str_of('Name')}=${it.str_of('Value')}')
+	assert got == ['List-Id=<meshbbs.xerokuhl.com>', 'Precedence=list', 'X-Loop=meshbbs@xerokuhl.com']
+}
+
+fn test_a_notice_is_unchanged_by_all_this() {
+	req := ses_request(list_conf(), EmailMsg{
+		to:      'friend@example.com'
+		subject: 's'
+		text:    't'
+	}, 0)
+	doc := parse_json(req.body) or { panic('body is not json') }
+	assert doc.str_of('FromEmailAddress') == 'Buffalo Mesh <mesh@xerokuhl.com>'
+	assert doc.get('ReplyToAddresses').arr.map(it.s) == ['sysop@xerokuhl.com']
+	assert doc.get('Content').get('Simple').get('Headers').arr.len == 0
+}
+
+fn test_a_post_with_no_name_is_signed_with_the_list_name() {
+	req := ses_request(list_conf(), EmailMsg{
+		to:        'a@b.co'
+		subject:   's'
+		text:      't'
+		list_post: true
+	}, 0)
+	assert (parse_json(req.body) or { panic('x') }).str_of('FromEmailAddress') == '"Buffalo Mesh" <meshbbs@xerokuhl.com>'
+}
+
+fn test_a_display_name_is_safe_in_a_from_line() {
+	assert display_name_for_from('Ada Lovelace') == '"Ada Lovelace"'
+	assert display_name_for_from('Ada "the <b>Countess</b>" \\ Lovelace') == '"Ada the bCountess/b Lovelace"'
+	assert display_name_for_from('') == '' && display_name_for_from('  \r\n ') == ''
+	assert !display_name_for_from('Eve\r\nBcc: x@y.zz').contains('\n')
+}
+
+fn test_a_name_outside_ascii_is_sent_as_encoded_words_each_short_enough() {
+	n := display_name_for_from('Élise Müller 日本語 via Buffalo Mesh and a rather long tail to force several words')
+	assert n.contains('=?UTF-8?B?') && n.bytes().all(it < 128)
+	words := n.split(' ')
+	assert words.all(it.len <= 75), n
+	assert decode_encoded_words(n).starts_with('Élise Müller 日本語 via Buffalo Mesh')
 }

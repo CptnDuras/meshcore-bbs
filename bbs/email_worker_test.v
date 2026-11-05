@@ -26,7 +26,7 @@ mut:
 	calls []string
 }
 
-fn (mut s StubHttp) post(url string, headers map[string]string, body string) HttpReply {
+fn (mut s StubHttp) request(method string, url string, headers map[string]string, body string) HttpReply {
 	s.calls << url
 	return HttpReply{
 		status: 200

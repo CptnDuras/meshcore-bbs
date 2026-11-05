@@ -1,6 +1,7 @@
 module main
 
 import emaillist
+import encoding.base64
 import encoding.utf8
 import os
 
@@ -17,6 +18,15 @@ import os
 //   from_name=Buffalo Mesh          (optional)
 //   configuration_set=meshbbs       (optional)
 //   reply_to=someone@example.com    (optional)
+// and, for mail sent to the list (see inbound.v), all optional:
+//   list_address=meshbbs@xerokuhl.com   the address people write to; posts are sent from it (default: from)
+//   list_name=Buffalo Mesh              how posts are signed: "Ada Lovelace via Buffalo Mesh" (default: from_name)
+//   subject_tag=[mesh]                  put in front of every post's subject
+//   inbound_bucket=...                  the S3 bucket SES drops incoming mail in (no bucket: posting by email is off)
+//   inbound_prefix=inbound/             where in the bucket (default inbound/)
+//   inbound_group=mesh                  the email group a post goes to (none: posting by email is off)
+//   inbound_max_bytes=1000000  inbound_per_sender_day=3  inbound_posts_day=20
+//   inbound_require_scan=1  inbound_require_auth=1   (0 only to find out why mail is being turned away)
 struct SesConfig {
 pub:
 	region     string = 'us-west-2'
@@ -26,9 +36,22 @@ pub:
 	from_name  string
 	config_set string
 	reply_to   string
+	// the list
+	list_address       string
+	list_name          string
+	subject_tag        string = '[mesh]'
+	inbound_bucket     string
+	inbound_prefix     string = 'inbound/'
+	inbound_group      string
+	inbound_max_bytes  int  = 1000000
+	inbound_per_sender int  = 3
+	inbound_posts_day  int  = 20
+	require_scan       bool = true
+	require_auth       bool = true
 }
 
-fn parse_ses_config(text string) !SesConfig {
+// "key=value" lines into a map (keys lower-cased); comments and blank lines skipped
+fn parse_kv(text string) map[string]string {
 	mut kv := map[string]string{}
 	for raw in text.split('\n') {
 		line := raw.trim_space()
@@ -37,6 +60,23 @@ fn parse_ses_config(text string) !SesConfig {
 		}
 		kv[line.all_before('=').trim_space().to_lower()] = line.all_after('=').trim_space()
 	}
+	return kv
+}
+
+fn bounded_int(kv map[string]string, key string, dflt int, lo int, hi int) !int {
+	raw := kv[key] or { return dflt }
+	if raw == '' || !raw.bytes().all(it.is_digit()) {
+		return error('${key} must be a whole number')
+	}
+	v := raw.int()
+	if v < lo || v > hi {
+		return error('${key} must be between ${lo} and ${hi}')
+	}
+	return v
+}
+
+fn parse_ses_config(text string) !SesConfig {
+	kv := parse_kv(text)
 	for k, v in kv {
 		if !emaillist.plain_value(v) {
 			return error('the SES settings value for ${k} has a control character in it')
@@ -59,14 +99,42 @@ fn parse_ses_config(text string) !SesConfig {
 	if reply_to != '' && !emaillist.valid_email(reply_to) {
 		return error('reply_to is not an email address')
 	}
+	list_address := (kv['list_address'] or { from }).to_lower()
+	if !emaillist.valid_email(list_address) {
+		return error('list_address is not an email address')
+	}
+	bucket := kv['inbound_bucket'] or { '' }
+	if bucket != '' && (bucket.len < 3 || bucket.len > 63 || !bucket.bytes().all((it >= `a` && it <= `z`) || it.is_digit() || it == `-` || it == `.`)) {
+		return error('inbound_bucket is not a bucket name')
+	}
+	prefix := kv['inbound_prefix'] or { 'inbound/' }
+	if !prefix.bytes().all(it.is_alnum() || it in [`/`, `_`, `-`]) || prefix.starts_with('/') || (prefix != '' && !prefix.ends_with('/')) {
+		return error('inbound_prefix must be letters, digits, - or _ and end with a /')
+	}
+	group := kv['inbound_group'] or { '' }
+	if group != '' && !emaillist.valid_group_name(group) {
+		return error('inbound_group is not a group name')
+	}
+	from_name := (kv['from_name'] or { '' }).replace('"', '').replace('<', '').replace('>', '')
 	return SesConfig{
-		region:     region
-		access_key: key
-		secret_key: secret
-		from_addr:  from
-		from_name:  (kv['from_name'] or { '' }).replace('"', '').replace('<', '').replace('>', '')
-		config_set: kv['configuration_set'] or { '' }
-		reply_to:   reply_to
+		region:             region
+		access_key:         key
+		secret_key:         secret
+		from_addr:          from
+		from_name:          from_name
+		config_set:         kv['configuration_set'] or { '' }
+		reply_to:           reply_to
+		list_address:       list_address
+		list_name:          emaillist.clean_name(kv['list_name'] or { from_name })
+		subject_tag:        emaillist.clean_name(kv['subject_tag'] or { '[mesh]' })
+		inbound_bucket:     bucket
+		inbound_prefix:     prefix
+		inbound_group:      group
+		inbound_max_bytes:  bounded_int(kv, 'inbound_max_bytes', 1000000, 1000, 10000000)!
+		inbound_per_sender: bounded_int(kv, 'inbound_per_sender_day', 3, 1, 100)!
+		inbound_posts_day:  bounded_int(kv, 'inbound_posts_day', 20, 1, 1000)!
+		require_scan:       (kv['inbound_require_scan'] or { '1' }) != '0'
+		require_auth:       (kv['inbound_require_auth'] or { '1' }) != '0'
 	}
 }
 
@@ -77,9 +145,40 @@ fn load_ses_config(path string) !SesConfig {
 
 struct EmailMsg {
 pub:
-	to      string
-	subject string
-	text    string
+	to        string
+	subject   string
+	text      string
+	list_post bool   // a post to the list: sent from the list address, signed with from_name, with the list headers
+	from_name string // for a list post, the poster's name ("Ada Lovelace" becomes "Ada Lovelace via Buffalo Mesh")
+}
+
+// A name for the From line that is safe in a header and acceptable to SES, which wants anything outside ASCII as RFC 2047 encoded words (each at most 75
+// characters, so a long name is cut into several). Quotes, brackets and control characters are dropped first.
+fn display_name_for_from(name string) string {
+	mut t := emaillist.clean_name(name.replace('\\', ''))
+	for t.contains('  ') {
+		t = t.replace('  ', ' ')
+	}
+	if t == '' {
+		return ''
+	}
+	if t.bytes().all(it < 128) {
+		return '"${t}"'
+	}
+	mut words := []string{}
+	mut chunk := []u8{}
+	for r in t.runes() {
+		enc := r.str().bytes()
+		if chunk.len + enc.len > 42 {
+			words << '=?UTF-8?B?${base64.encode(chunk)}?='
+			chunk = []u8{}
+		}
+		chunk << enc
+	}
+	if chunk.len > 0 {
+		words << '=?UTF-8?B?${base64.encode(chunk)}?='
+	}
+	return words.join(' ')
 }
 
 // A subject is one line: any line break is turned into a space, and it is cut at a length no mail client minds.
@@ -147,15 +246,35 @@ pub:
 // The signed request that sends one message. `now` is epoch seconds; nothing here reads the clock or the network.
 fn ses_request(cfg SesConfig, msg EmailMsg, now i64) SesRequest {
 	host := 'email.${cfg.region}.amazonaws.com'
-	from := if cfg.from_name != '' { '${cfg.from_name} <${cfg.from_addr}>' } else { cfg.from_addr }
+	// A post to the list comes from the list address (so a reply goes back to the list) and is signed with the poster's name; everything else is
+	// from the sysop's address, with the sysop's Reply-To.
+	from := if msg.list_post && cfg.list_address != '' {
+		name := display_name_for_from(if msg.from_name != '' {
+			'${msg.from_name} via ${cfg.list_name}'
+		} else {
+			cfg.list_name
+		})
+		if name != '' { '${name} <${cfg.list_address}>' } else { cfg.list_address }
+	} else if cfg.from_name != '' {
+		'${cfg.from_name} <${cfg.from_addr}>'
+	} else {
+		cfg.from_addr
+	}
 	mut b := '{"FromEmailAddress":${json_str(from)},"Destination":{"ToAddresses":[${json_str(msg.to)}]},'
-	if cfg.reply_to != '' {
+	if cfg.reply_to != '' && !msg.list_post {
 		b += '"ReplyToAddresses":[${json_str(cfg.reply_to)}],'
 	}
 	if cfg.config_set != '' {
 		b += '"ConfigurationSetName":${json_str(cfg.config_set)},'
 	}
-	b += '"Content":{"Simple":{"Subject":{"Data":${json_str(one_line_subject(msg.subject))},"Charset":"UTF-8"},"Body":{"Text":{"Data":${json_str(msg.text)},"Charset":"UTF-8"}}}}}'
+	b += '"Content":{"Simple":{"Subject":{"Data":${json_str(one_line_subject(msg.subject))},"Charset":"UTF-8"},"Body":{"Text":{"Data":${json_str(msg.text)},"Charset":"UTF-8"}}'
+	if msg.list_post {
+		// List-Id names the list, Precedence says it is list mail (autoresponders should keep quiet), X-Loop is what inbound.v looks for to never take
+		// its own mail back in
+		list_id := '<${cfg.list_address.replace('@', '.')}>'
+		b += ',"Headers":[{"Name":"List-Id","Value":${json_str(list_id)}},{"Name":"Precedence","Value":"list"},{"Name":"X-Loop","Value":${json_str(cfg.list_address)}}]'
+	}
+	b += '}}}'
 	date := amz_date_of(now)
 	signed := {
 		'content-type': 'application/json'
@@ -256,8 +375,9 @@ pub:
 }
 
 interface HttpSender {
+	// method is POST, GET or DELETE; body is '' for the last two
 mut:
-	post(url string, headers map[string]string, body string) HttpReply
+	request(method string, url string, headers map[string]string, body string) HttpReply
 }
 
 // Writes a file only its owner can read before the content goes in (the authorization header and the message are not for other users).
@@ -272,7 +392,10 @@ mut:
 	n int
 }
 
-fn (mut c CurlSender) post(url string, headers map[string]string, body string) HttpReply {
+fn (mut c CurlSender) request(method string, url string, headers map[string]string, body string) HttpReply {
+	if method !in ['POST', 'GET', 'DELETE'] || !url.starts_with('https://') {
+		return HttpReply{}
+	}
 	c.n++
 	base := os.join_path(os.temp_dir(), 'meshbbs-ses-${os.getpid()}-${c.n}')
 	hdr, bod, out := base + '.h', base + '.b', base + '.o'
@@ -286,9 +409,14 @@ fn (mut c CurlSender) post(url string, headers map[string]string, body string) H
 		lines += '${k}: ${v}\n'
 	}
 	secret_file(hdr, lines) or { return HttpReply{} }
-	secret_file(bod, body) or { return HttpReply{} }
-	res := os.exec(['curl', '-s', '-m', '30', '-o', out, '-w', '%{http_code}', '-X', 'POST', '-H',
-		'@${hdr}', '--data-binary', '@${bod}', url])
+	mut args := ['curl', '-s', '-m', '30', '--max-filesize', '20000000', '-o', out, '-w', '%{http_code}',
+		'-X', method, '-H', '@${hdr}']
+	if body != '' {
+		secret_file(bod, body) or { return HttpReply{} }
+		args << ['--data-binary', '@${bod}']
+	}
+	args << url
+	res := os.exec(args)
 	if res.exit_code != 0 {
 		return HttpReply{}
 	}
@@ -308,6 +436,6 @@ mut:
 
 fn (mut m Mailer) send(msg EmailMsg, now i64) SendResult {
 	req := ses_request(m.cfg, msg, now)
-	reply := m.sender.post(req.url, req.headers, req.body)
+	reply := m.sender.request('POST', req.url, req.headers, req.body)
 	return classify_ses_reply(m.cfg, reply.status, reply.body)
 }

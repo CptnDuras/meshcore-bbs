@@ -16,7 +16,16 @@ fn email_fresh_db() sqlite.DB {
 	db.exec('CREATE TABLE email_members (id INTEGER PRIMARY KEY AUTOINCREMENT, group_name TEXT NOT NULL, email TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL, note TEXT NOT NULL, added INTEGER NOT NULL, last_sent INTEGER NOT NULL, last_error TEXT NOT NULL)') or {
 		panic(err)
 	}
-	db.exec('CREATE TABLE email_outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, to_addr TEXT NOT NULL, subject TEXT NOT NULL, body TEXT NOT NULL, group_name TEXT NOT NULL, created INTEGER NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL, next_try INTEGER NOT NULL, last_error TEXT NOT NULL, sent_ts INTEGER NOT NULL, message_id TEXT NOT NULL)') or {
+	db.exec('CREATE TABLE email_outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, to_addr TEXT NOT NULL, subject TEXT NOT NULL, body TEXT NOT NULL, group_name TEXT NOT NULL, created INTEGER NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL, next_try INTEGER NOT NULL, last_error TEXT NOT NULL, sent_ts INTEGER NOT NULL, message_id TEXT NOT NULL, from_name TEXT NOT NULL, list_post INTEGER NOT NULL)') or {
+		panic(err)
+	}
+	db.exec('CREATE TABLE email_inbound (id INTEGER PRIMARY KEY AUTOINCREMENT, s3_key TEXT NOT NULL UNIQUE, message_id TEXT NOT NULL, from_addr TEXT NOT NULL, from_name TEXT NOT NULL, subject TEXT NOT NULL, received INTEGER NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, recipients INTEGER NOT NULL)') or {
+		panic(err)
+	}
+	db.exec('CREATE TABLE email_blocks (id INTEGER PRIMARY KEY AUTOINCREMENT, pattern TEXT NOT NULL UNIQUE, note TEXT NOT NULL, added INTEGER NOT NULL)') or {
+		panic(err)
+	}
+	db.exec('CREATE TABLE email_settings (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE, val TEXT NOT NULL)') or {
 		panic(err)
 	}
 	return db
@@ -32,6 +41,9 @@ fn test_the_helper_tables_have_the_shared_contract_columns() {
 	assert email_cols(mut db, 'email_groups') == emaillist.groups_columns
 	assert email_cols(mut db, 'email_members') == emaillist.members_columns
 	assert email_cols(mut db, 'email_outbox') == emaillist.outbox_columns
+	assert email_cols(mut db, 'email_inbound') == emaillist.inbound_columns
+	assert email_cols(mut db, 'email_blocks') == emaillist.blocks_columns
+	assert email_cols(mut db, 'email_settings') == emaillist.settings_columns
 }
 
 fn members_of(mut db sqlite.DB, group string) []string {
@@ -235,7 +247,7 @@ fn test_the_queue_summary_counts_and_lists_failures() {
 	mut db := email_fresh_db()
 	for row in [['a@example.com', 'queued', '0'], ['b@example.com', 'sent', '900'],
 		['c@example.com', 'sent', '10'], ['d@example.com', 'failed', '0']] {
-		db.exec_param_many("INSERT INTO email_outbox (to_addr, subject, body, group_name, created, status, attempts, next_try, last_error, sent_ts, message_id) VALUES (?, 's', 'b', 'g', 1, ?, 0, 0, ?, ?, '')", [
+		db.exec_param_many("INSERT INTO email_outbox (to_addr, subject, body, group_name, created, status, attempts, next_try, last_error, sent_ts, message_id, from_name, list_post) VALUES (?, 's', 'b', 'g', 1, ?, 0, 0, ?, ?, '', '', 0)", [
 			row[0],
 			row[1],
 			if row[1] == 'failed' { 'Email address is not verified' } else { '' },
@@ -272,7 +284,7 @@ fn test_everything_from_the_database_is_escaped_exactly_once() {
 		"O'Brien <script>alert(1)</script> & co",
 		'refused: "x" <y>',
 	]) or { panic(err) }
-	db.exec_param_many("INSERT INTO email_outbox (to_addr, subject, body, group_name, created, status, attempts, next_try, last_error, sent_ts, message_id) VALUES ('b@example.com', 's', 'b', 'club', 1, 'failed', 0, 0, '<i>bad</i> & worse', 0, '')", []string{}) or {
+	db.exec_param_many("INSERT INTO email_outbox (to_addr, subject, body, group_name, created, status, attempts, next_try, last_error, sent_ts, message_id, from_name, list_post) VALUES ('b@example.com', 's', 'b', 'club', 1, 'failed', 0, 0, '<i>bad</i> & worse', 0, '', '', 0)", []string{}) or {
 		panic(err)
 	}
 	p := email_load(mut db, 1000)
@@ -282,4 +294,129 @@ fn test_everything_from_the_database_is_escaped_exactly_once() {
 	assert string(m.error) == 'refused: &quot;x&quot; &lt;y&gt;'
 	assert p.failures.map(string(it)) == ['b@example.com: &lt;i&gt;bad&lt;/i&gt; &amp; worse']
 	assert string(esc('<img src=x onerror=1> & "q"')) == '&lt;img src=x onerror=1&gt; &amp; &quot;q&quot;'
+}
+
+// ---- posting by email ----
+
+fn add_inbound(mut db sqlite.DB, key string, received i64, from_addr string, from_name string, subject string, status string, reason string, n int) {
+	db.exec_param_many('INSERT INTO email_inbound (s3_key, message_id, from_addr, from_name, subject, received, status, reason, recipients) VALUES (?, "", ?, ?, ?, ?, ?, ?, ?)', [
+		key,
+		from_addr,
+		from_name,
+		subject,
+		received.str(),
+		status,
+		reason,
+		n.str(),
+	]) or { panic(err) }
+}
+
+fn test_posting_by_email_shows_as_not_set_up_until_the_daemon_says_where_it_listens() {
+	mut db := email_fresh_db()
+	p := email_load(mut db, 1000)
+	assert !p.inbound_on && string(p.inbound_age) == 'not yet' && p.recent.len == 0 && p.blocks.len == 0
+	email_put_setting(mut db, emaillist.setting_inbound_address, 'meshbbs@xerokuhl.com') or { panic(err) }
+	email_put_setting(mut db, emaillist.setting_inbound_group, 'mesh') or { panic(err) }
+	email_put_setting(mut db, emaillist.setting_inbound_poll, '940') or { panic(err) }
+	q := email_load(mut db, 1000)
+	assert q.inbound_on && string(q.inbound_address) == 'meshbbs@xerokuhl.com' && string(q.inbound_group) == 'mesh'
+	assert string(q.inbound_age) == 'just now' && !q.inbound_paused && string(q.inbound_error) == ''
+}
+
+fn test_a_problem_the_daemon_reports_is_shown_and_escaped() {
+	mut db := email_fresh_db()
+	email_put_setting(mut db, emaillist.setting_inbound_address, 'meshbbs@xerokuhl.com') or { panic(err) }
+	email_put_setting(mut db, emaillist.setting_inbound_error, 'could not look in the bucket: <b>Access Denied</b> & "no"') or { panic(err) }
+	assert string(email_load(mut db, 1000).inbound_error) == 'could not look in the bucket: &lt;b&gt;Access Denied&lt;/b&gt; &amp; &quot;no&quot;'
+}
+
+fn test_a_setting_is_set_again_not_added_twice() {
+	mut db := email_fresh_db()
+	email_put_setting(mut db, 'k', 'one') or { panic(err) }
+	email_put_setting(mut db, 'k', 'two') or { panic(err) }
+	assert email_setting(mut db, 'k') == 'two' && email_setting(mut db, 'nope') == ''
+	assert email_count(mut db, 'SELECT COUNT(*) FROM email_settings WHERE key=?', 'k') == 1
+}
+
+fn test_how_long_ago_is_said_in_words() {
+	assert age_text(0, 1000) == 'not yet' && age_text(950, 1000) == 'just now'
+	assert age_text(1000, 1300) == '5 min ago' && age_text(1000, 1000 + 3 * 3600) == '3 hours ago'
+}
+
+fn test_pausing_and_resuming() {
+	mut db := email_fresh_db()
+	assert email_set_paused(mut db, true).contains('paused')
+	assert email_load(mut db, 1000).inbound_paused
+	assert email_set_paused(mut db, false).contains('on again')
+	assert !email_load(mut db, 1000).inbound_paused
+	assert email_setting(mut db, emaillist.setting_inbound_paused) == '0'
+}
+
+fn test_recent_mail_is_listed_newest_first_with_what_became_of_each() {
+	mut db := email_fresh_db()
+	add_inbound(mut db, 'k1', 900, 'ada@example.com', 'Ada', 'Net tonight', 'posted', '', 3)
+	add_inbound(mut db, 'k2', 910, 'bob@example.com', '', 'Out of office', 'rejected', 'automatic mail (Auto-Submitted)', 0)
+	add_inbound(mut db, 'k3', 920, 'carol@example.org', 'Carol', 'STOP', 'stopped', '', 0)
+	add_inbound(mut db, 'k4', 930, '', '', '', 'failed', 'could not be fetched', 0)
+	add_inbound(mut db, 'k5', 940, 'dan@example.net', 'Dan', 'half way', 'posting', '', 0)
+	add_inbound(mut db, 'k6', 950, 'eve@example.net', 'Eve', 'one person', 'posted', '', 1)
+	r := email_load(mut db, 1000).recent
+	assert r.map(string(it.status)) == ['posted', 'posting', 'failed', 'stopped', 'rejected', 'posted']
+	assert string(r[0].result) == 'sent to 1 person' && string(r[5].result) == 'sent to 3 people'
+	assert string(r[4].result) == 'automatic mail (Auto-Submitted)' && string(r[3].result) == 'taken off the list'
+	assert string(r[1].result) == 'was being passed on when the daemon stopped'
+	assert string(r[2].from) == '(could not be read)' && string(r[5].from) == 'Ada &lt;ada@example.com&gt;'
+	assert r.map(it.good) == [true, false, false, true, false, true]
+	// only mail that was posted or turned away has a Block button, and not one with no sender
+	assert r.map(it.can_block) == [true, false, false, false, true, true]
+}
+
+fn test_the_most_recent_fifteen_are_shown() {
+	mut db := email_fresh_db()
+	for i in 0 .. 20 {
+		add_inbound(mut db, 'k${i}', 900 + i, 'a${i}@example.com', '', 'subject ${i}', 'posted', '', 2)
+	}
+	r := email_load(mut db, 1000).recent
+	assert r.len == 15 && string(r[0].subject) == 'subject 19' && string(r[14].subject) == 'subject 5'
+}
+
+fn test_what_strangers_wrote_is_escaped_once() {
+	mut db := email_fresh_db()
+	add_inbound(mut db, 'k1', 900, 'x@example.com', 'Eve <script>alert(1)</script> & "co"', "<img src=x onerror=1> O'Brien", 'rejected', 'a <b> reason', 0)
+	r := email_load(mut db, 1000).recent[0]
+	assert string(r.from) == 'Eve &lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;co&quot; &lt;x@example.com&gt;'
+	assert string(r.subject) == '&lt;img src=x onerror=1&gt; O&#39;Brien' && string(r.result) == 'a &lt;b&gt; reason'
+}
+
+fn test_blocking_an_address_or_a_domain_and_unblocking() {
+	mut db := email_fresh_db()
+	assert email_block_sender(mut db, ' Spam@Example.COM ', 'sent junk', 1000) == 'spam@example.com is blocked: mail from it is turned away.'
+	assert email_block_sender(mut db, '@spammy.example', '', 1000).contains('@spammy.example is blocked')
+	assert email_block_sender(mut db, 'spam@example.com', '', 1000).contains('already blocked')
+	b := email_load(mut db, 1000).blocks
+	assert b.map(string(it.pattern)) == ['@spammy.example', 'spam@example.com'] && string(b[1].note) == 'sent junk'
+	assert email_unblock_sender(mut db, 'SPAM@example.com') == 'spam@example.com is no longer blocked.'
+	assert email_unblock_sender(mut db, 'spam@example.com').contains('is not blocked')
+	assert email_load(mut db, 1000).blocks.len == 1
+}
+
+fn test_a_block_that_would_block_nothing_or_is_not_a_pattern_is_refused() {
+	mut db := email_fresh_db()
+	for p in ['', 'nope', '*@example.com', '@', '@com', 'a b@example.com',
+		"x'; DROP TABLE email_blocks;--"] {
+		assert email_block_sender(mut db, p, '', 1000).starts_with('Give an address'), p
+	}
+	assert email_load(mut db, 1000).blocks.len == 0 && email_tables_ready(mut db)
+}
+
+fn test_a_sender_who_is_blocked_shows_as_blocked_with_no_block_button() {
+	mut db := email_fresh_db()
+	add_inbound(mut db, 'k1', 900, 'dan@example.net', 'Dan', 'a', 'posted', '', 2)
+	add_inbound(mut db, 'k2', 910, 'eve@spam.example', 'Eve', 'b', 'rejected', 'flagged as spam', 0)
+	add_inbound(mut db, 'k3', 920, 'fay@fine.example', 'Fay', 'c', 'rejected', 'x', 0)
+	email_block_sender(mut db, 'dan@example.net', '', 1000)
+	email_block_sender(mut db, '@spam.example', '', 1000)
+	r := email_load(mut db, 1000).recent // newest first: fay, eve, dan
+	assert r.map(it.blocked) == [false, true, true]
+	assert r.map(it.can_block) == [true, false, false]
 }
