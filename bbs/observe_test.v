@@ -488,3 +488,42 @@ fn test_a_ready_report_says_it_is_on_before_anything_is_sent() {
 	r.reporter.tick(1000, mut r.store)
 	assert r.state().starts_with('on: reporting every 5 minutes')
 }
+
+// --- seeding from the radio's contact book ---
+
+const seed_a = 'a1'.repeat(32)
+const seed_b = 'b2'.repeat(32)
+const seed_c = 'c3'.repeat(32)
+
+fn test_contact_roles_are_only_repeaters_and_rooms() {
+	assert contact_role(2) == 'repeater'
+	assert contact_role(3) == 'room'
+	assert contact_role(1) == '' // a chat client is a person: never reported
+	assert contact_role(4) == ''
+}
+
+fn test_a_seeded_contact_is_reported_with_its_own_advert_time_and_only_once_per_advert() {
+	mut a := &Aggregator{}
+	a.set_on(true, 100)
+	assert a.wants_contacts() // once, when recording starts
+	assert !a.wants_contacts()
+	a.seed(seed_a, 'Hill', 'repeater', 44.4, -106.8, 5000)
+	a.seed(seed_b, 'Person', '', 44.4, -106.8, 5000) // not a repeater or room
+	a.seed(seed_c, 'Nowhere', 'repeater', 0, 0, 5000) // no position
+	w := a.take(200)
+	assert w.nodes.len == 1
+	assert w.nodes[0].name == 'Hill'
+	assert w.nodes[0].last_heard == 5000 // when its advert was, not now
+	assert w.nodes[0].heard == 0
+	a.seed(seed_a, 'Hill', 'repeater', 44.4, -106.8, 5000) // the same advert again: not sent again
+	assert a.take(300).nodes.len == 0
+	a.seed(seed_a, 'Hill', 'repeater', 44.4, -106.8, 6000) // a newer advert is
+	assert a.take(400).nodes.len == 1
+}
+
+fn test_nothing_is_seeded_while_the_report_is_off() {
+	mut a := &Aggregator{}
+	a.seed(seed_a, 'Hill', 'repeater', 44.4, -106.8, 5000)
+	a.set_on(true, 100)
+	assert a.take(200).nodes.len == 0
+}

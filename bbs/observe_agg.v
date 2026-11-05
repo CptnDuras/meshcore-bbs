@@ -55,11 +55,13 @@ pub:
 
 pub struct Aggregator {
 mut:
-	mu    &sync.Mutex = sync.new_mutex()
-	on    bool
-	since i64
-	nodes map[string]NodeAcc
-	links map[string]LinkAcc
+	mu        &sync.Mutex = sync.new_mutex()
+	on        bool
+	since     i64
+	nodes     map[string]NodeAcc
+	links     map[string]LinkAcc
+	seeded    map[string]i64 // contact -> the advert time already sent from the radio's contact book
+	want_seed bool
 }
 
 pub fn position_ok(lat f64, lon f64) bool {
@@ -80,6 +82,8 @@ pub fn (mut a Aggregator) set_on(on bool, now i64) {
 	}
 	a.on = on
 	a.nodes.clear()
+	a.seeded.clear()
+	a.want_seed = on
 	a.links.clear()
 	a.since = now
 }
@@ -179,6 +183,42 @@ pub fn (mut a Aggregator) record(ts i64, snr f64, rssi f64, raw []u8) {
 	a.nodes[adv.pubkey] = n
 }
 
+// seed adds a repeater or room the radio already knows from its contact book: the radio has heard its advert, checked it and kept its name and
+// position, so the report can name every repeater in reach at once instead of waiting for each one to advertise again. It was not heard just now, so
+// it counts for no new packets, and its last-heard time is the advert's own, never now. Each contact is sent again only when it has a newer advert.
+pub fn (mut a Aggregator) seed(pubkey string, name string, role string, lat f64, lon f64, last_advert i64) {
+	if pubkey.len != 64 || role !in observed_roles || !position_ok(lat, lon) || last_advert <= 0 {
+		return
+	}
+	a.mu.lock()
+	defer {
+		a.mu.unlock()
+	}
+	if !a.on || a.nodes.len >= observe_max_nodes {
+		return
+	}
+	if last_advert <= (a.seeded[pubkey] or { i64(0) }) {
+		return
+	}
+	mut n := a.nodes[pubkey] or {
+		NodeAcc{
+			pubkey: pubkey
+		}
+	}
+	if last_advert >= n.last_advert || n.name == '' {
+		n.name = name
+		n.role = role
+		n.lat = lat
+		n.lon = lon
+		n.last_advert = last_advert
+	}
+	if last_advert > n.last_heard {
+		n.last_heard = last_advert
+	}
+	a.nodes[pubkey] = n
+	a.seeded[pubkey] = last_advert
+}
+
 // take hands over what has been tallied since the last take (or since recording began) and starts a fresh window.
 pub fn (mut a Aggregator) take(now i64) Window {
 	a.mu.lock()
@@ -207,5 +247,26 @@ pub fn (mut a Aggregator) take(now i64) Window {
 	a.nodes.clear()
 	a.links.clear()
 	a.since = now
+	return w
+}
+
+// contact_role names a radio contact type for the report: 2 is a repeater and 3 a room server; chat clients and sensors are not reported.
+pub fn contact_role(contact_type u8) string {
+	return match contact_type {
+		2 { 'repeater' }
+		3 { 'room' }
+		else { '' }
+	}
+}
+
+// wants_contacts is true once after recording is switched on: the radio's contact book is read then, so the first report already names every
+// repeater in reach.
+pub fn (mut a Aggregator) wants_contacts() bool {
+	a.mu.lock()
+	defer {
+		a.mu.unlock()
+	}
+	w := a.want_seed
+	a.want_seed = false
 	return w
 }
