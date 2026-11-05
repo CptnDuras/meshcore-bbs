@@ -1,6 +1,6 @@
 # meshgroup — a very small mailing list
 
-`meshgroup@xerokuhl.com`: anyone can write to it and the message goes to everyone on the list; anyone can sign their address up on a
+`meshgroup@xerokuhl.com`: people on the list can write to it and the message goes to everyone else on it; anyone can sign their address up on a
 web page. About the size of a groups.io list with none of the extras: no archive, no digests, no moderation queue.
 
 ```
@@ -43,7 +43,7 @@ address. From a terminal the same things are `admin.py add people.txt`, `list`, 
 - **Posting**: the message goes to every active member except the sender, one email each, from the list address as "Ada Lovelace via Mesh
   Group", subject tagged `[meshgroup]`, text only (attachments are dropped and the post says so). The footer says who the message is from, offers a link to share for signing up
   (`https://groups.xerokuhl.com/`), and has the leave link (also sent as `List-Unsubscribe`). A reply
-  goes to the whole list. `POSTING=members` makes it members-only.
+  goes to the whole list. Only active members may post (`POSTING=members`, the default); mail from anyone else is dropped without a reply. `POSTING=anyone` opens it.
 - **Leaving**: the footer link (a page with one button, no password or token needed), or replying with just STOP. Limited to 30 an hour from one place.
 - **Turned away** (logged, never answered, so the list cannot be used to send mail to someone): automatic or bulk mail (Auto-Submitted, Precedence,
   List-Id…), delivery reports, no-reply senders, the list's own mail, blocked people, anything SES's spam/virus scan did not pass

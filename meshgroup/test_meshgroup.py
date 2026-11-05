@@ -102,7 +102,7 @@ class FakeObjects:
 
 
 def make_app(**cfg):
-    c = app.Config(list_address=LIST, site_url='https://lists.example', send_pause=0, **cfg)
+    c = app.Config(list_address=LIST, site_url='https://lists.example', send_pause=0, **{'posting': 'anyone', **cfg})  # most tests post from people not on the list
     a = app.App(c, FakeStore(), FakeMailer(), FakeObjects(), now=lambda: NOW, sleep=lambda s: None, log=lambda s: None)
     return a
 
@@ -197,13 +197,21 @@ class Posting(unittest.TestCase):
         self.assertEqual(post(a, raw()), 'posted')
         self.assertEqual(sorted(m['to'] for m in a.mailer.sent), ['cy@example.com', 'dee@example.com'])
 
-    def test_a_non_member_may_post_unless_the_list_is_members_only(self):
+    def test_only_people_on_the_list_may_post_unless_the_list_is_opened(self):
+        self.assertEqual(app.Config(list_address=LIST).posting, 'members')  # the default
+        self.assertEqual(app.Config.from_env({'LIST_ADDRESS': LIST}).posting, 'members')
+        self.assertEqual(app.Config.from_env({'LIST_ADDRESS': LIST, 'POSTING': 'anyone'}).posting, 'anyone')
+        self.assertEqual(app.Config.from_env({'LIST_ADDRESS': LIST, 'POSTING': 'junk'}).posting, 'members')
         a = make_app()
         with_members(a, 'bob')
-        self.assertEqual(post(a, raw()), 'posted')
+        self.assertEqual(post(a, raw()), 'posted')  # opened: a stranger may post
         b = make_app(posting='members')
         with_members(b, 'bob')
         self.assertEqual(post(b, raw()), 'rejected')
+        self.assertEqual(b.mailer.sent, [])
+        for status in ('pending', 'unsubscribed', 'bounced', 'complained', 'blocked'):  # only an active member counts
+            b.store.members['ada@example.com'] = {'email': 'ada@example.com', 'name': '', 'token': 't', 'status': status}
+            self.assertEqual(post(b, raw(), mid='m-' + status), 'rejected', status)
         with_members(b, 'ada')
         self.assertEqual(post(b, raw(), mid='m2'), 'posted')
 

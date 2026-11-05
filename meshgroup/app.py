@@ -29,7 +29,7 @@ class Config:
     list_name: str = 'Mesh Group'
     tag: str = '[meshgroup]'
     site_url: str = ''  # where the sign-up page lives; empty = ask for the function's own URL
-    posting: str = 'anyone'  # 'anyone', or 'members' (only people on the list)
+    posting: str = 'members'  # 'members' (only people on the list), or 'anyone'
     max_members: int = 300
     per_sender_day: int = 3
     posts_day: int = 20
@@ -58,7 +58,7 @@ class Config:
             list_name=env.get('LIST_NAME', 'Mesh Group'),
             tag=env.get('SUBJECT_TAG', '[meshgroup]'),
             site_url=env.get('SITE_URL', '').rstrip('/'),
-            posting='members' if env.get('POSTING', 'anyone') == 'members' else 'anyone',
+            posting='anyone' if env.get('POSTING', 'members') == 'anyone' else 'members',
             max_members=num('MAX_MEMBERS', 300),
             per_sender_day=num('PER_SENDER_DAY', 3),
             posts_day=num('POSTS_DAY', 20),

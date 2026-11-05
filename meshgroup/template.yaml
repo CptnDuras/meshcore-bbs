@@ -5,7 +5,7 @@ Parameters:
   ListAddress: {Type: String, Default: meshgroup@xerokuhl.com}
   ListName: {Type: String, Default: Mesh Group}
   SubjectTag: {Type: String, Default: '[meshgroup]'}
-  Posting: {Type: String, Default: anyone, AllowedValues: [anyone, members]}
+  Posting: {Type: String, Default: members, AllowedValues: [anyone, members]}
   DomainName: {Type: String, Default: groups.xerokuhl.com, Description: 'Where the sign-up and owner pages are served'}
   CertificateArn: {Type: String, Description: 'An issued ACM certificate for DomainName, in this region (domain.sh makes it)'}
   SendPause: {Type: String, Default: '1.05', Description: 'Seconds between messages to the list. 1.05 suits the SES sandbox (1 a second); lower it once SES is out of the sandbox.'}
