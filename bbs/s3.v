@@ -2,7 +2,7 @@ module main
 
 import time
 
-// The bucket SES drops incoming mail in, read the way ses.v sends: requests built and signed here (sigv4.v), sent by curl. Only three calls are needed:
+// The bucket SES drops incoming mail in, read the way ses.v sends: requests built and signed here (sigv4.v), sent by httpclient.v. Only three calls are needed:
 // list what is waiting, fetch one message, delete it once it has been dealt with. The bucket is private to the account, and the daemon's key is allowed
 // only those three things on the inbound prefix (tools/ses-inbound-setup.sh).
 
@@ -120,16 +120,17 @@ mut:
 	sender HttpSender
 }
 
+// (a named string rather than an `if` inside error(...): the V on titan cannot type that)
+fn s3_failure(status int, body string) string {
+	return if status == 0 { 'no answer from S3' } else { s3_error_text(status, body) }
+}
+
 fn (mut s S3Store) list(limit int) ![]ObjectInfo {
 	q := 'list-type=2&max-keys=${limit}&prefix=${uri_encode(s.cfg.inbound_prefix)}'
 	req := s3_request(s.cfg, 'GET', '/', q, time.now().unix())
 	r := s.sender.request('GET', req.url, req.headers, '')
 	if r.status != 200 {
-		return error(if r.status == 0 {
-			'no answer from S3'
-		} else {
-			s3_error_text(r.status, r.body)
-		})
+		return error(s3_failure(r.status, r.body))
 	}
 	return parse_object_list(r.body, s.cfg.inbound_prefix)
 }
@@ -141,7 +142,7 @@ fn (mut s S3Store) get(key string) !string {
 	req := s3_request(s.cfg, 'GET', '/' + key, '', time.now().unix())
 	r := s.sender.request('GET', req.url, req.headers, '')
 	if r.status != 200 {
-		return error(if r.status == 0 { 'no answer from S3' } else { s3_error_text(r.status, '') })
+		return error(s3_failure(r.status, ''))
 	}
 	return r.body
 }
@@ -154,10 +155,6 @@ fn (mut s S3Store) delete(key string) ! {
 	req := s3_request(s.cfg, 'DELETE', '/' + key, '', time.now().unix())
 	r := s.sender.request('DELETE', req.url, req.headers, '')
 	if r.status !in [200, 204, 404] {
-		return error(if r.status == 0 {
-			'no answer from S3'
-		} else {
-			s3_error_text(r.status, r.body)
-		})
+		return error(s3_failure(r.status, r.body))
 	}
 }

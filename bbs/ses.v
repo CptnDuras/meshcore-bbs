@@ -5,7 +5,7 @@ import encoding.base64
 import encoding.utf8
 import os
 
-// Sending email through Amazon SES (the v2 API), with no SDK and no V TLS: the request is built and signed here (sigv4.v) and handed to curl.
+// Sending email through Amazon SES (the v2 API), with no SDK: the request is built and signed here (sigv4.v) and sent by httpclient.v.
 //
 // The pieces are separate so each can be tested alone: parse_ses_config (the settings file), ses_request (a pure function from a message to the signed
 // request), classify_ses_reply (what an answer means for the message and for the queue), and CurlSender (the only part that touches the network).
@@ -378,52 +378,6 @@ interface HttpSender {
 	// method is POST, GET or DELETE; body is '' for the last two
 mut:
 	request(method string, url string, headers map[string]string, body string) HttpReply
-}
-
-// Writes a file only its owner can read before the content goes in (the authorization header and the message are not for other users).
-fn secret_file(path string, content string) ! {
-	os.write_file(path, '')!
-	os.chmod(path, 0o600)!
-	os.write_file(path, content)!
-}
-
-struct CurlSender {
-mut:
-	n int
-}
-
-fn (mut c CurlSender) request(method string, url string, headers map[string]string, body string) HttpReply {
-	if method !in ['POST', 'GET', 'DELETE'] || !url.starts_with('https://') {
-		return HttpReply{}
-	}
-	c.n++
-	base := os.join_path(os.temp_dir(), 'meshbbs-ses-${os.getpid()}-${c.n}')
-	hdr, bod, out := base + '.h', base + '.b', base + '.o'
-	defer {
-		for f in [hdr, bod, out] {
-			os.rm(f) or {}
-		}
-	}
-	mut lines := ''
-	for k, v in headers {
-		lines += '${k}: ${v}\n'
-	}
-	secret_file(hdr, lines) or { return HttpReply{} }
-	mut args := ['curl', '-s', '-m', '30', '--max-filesize', '20000000', '-o', out, '-w', '%{http_code}',
-		'-X', method, '-H', '@${hdr}']
-	if body != '' {
-		secret_file(bod, body) or { return HttpReply{} }
-		args << ['--data-binary', '@${bod}']
-	}
-	args << url
-	res := os.exec(args)
-	if res.exit_code != 0 {
-		return HttpReply{}
-	}
-	return HttpReply{
-		status: res.output.trim_space().int()
-		body:   os.read_file(out) or { '' }
-	}
 }
 
 // Mailer sends one message at a time and says what happened; the queue (emailworker.v) decides what to do about it.

@@ -45,7 +45,7 @@ fn open_email_sender() EmailSender {
 	}
 	return Mailer{
 		cfg:    cfg
-		sender: &CurlSender{}
+		sender: &HttpsSender{}
 	}
 }
 
@@ -90,7 +90,7 @@ fn open_inbound_worker(store Store, log fn (string)) InboundWorker {
 		store:    store
 		objects:  S3Store{
 			cfg:    cfg
-			sender: &CurlSender{}
+			sender: &HttpsSender{}
 		}
 		settings: s
 		contact:  cfg.reply_to

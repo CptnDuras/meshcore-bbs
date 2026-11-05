@@ -6,7 +6,7 @@ import encoding.hex
 import time
 
 // AWS Signature Version 4, just enough to call SES with no SDK. Ported from the planner service's aws.v (same author, same tests): this daemon cannot
-// use V's TLS, so the request is signed here and sent by curl (see ses.v).
+// use V's TLS, so the request is signed here and sent by httpclient.v.
 
 struct AwsCreds {
 	access_key string
