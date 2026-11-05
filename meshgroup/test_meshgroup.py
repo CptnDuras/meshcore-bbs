@@ -342,6 +342,17 @@ class Bounces(unittest.TestCase):
         self.assertEqual((n, a.store.members['bob@example.com']['status']), (1, 'complained'))
         self.assertEqual([m['email'] for m in a.store.list_active()], ['cy@example.com'])
 
+    def test_an_address_that_keeps_failing_temporarily_is_taken_off(self):
+        a = make_app()
+        with_members(a, 'ada', 'bob')
+        soft = lambda who: a.delivery_event({'eventType': 'Bounce', 'bounce': {'bounceType': 'Transient', 'bouncedRecipients': [{'emailAddress': who}]}})
+        self.assertEqual([soft('ada@example.com') for _ in range(4)], [0, 0, 0, 0])
+        self.assertEqual(a.store.members['ada@example.com']['status'], 'active')
+        self.assertEqual(soft('ada@example.com'), 1)  # the fifth
+        self.assertEqual(a.store.members['ada@example.com']['status'], 'bounced')
+        self.assertEqual(a.store.members['bob@example.com']['status'], 'active')  # counted per address
+        self.assertEqual([m['email'] for m in a.store.list_active()], ['bob@example.com'])
+
     def test_a_temporary_bounce_or_other_event_changes_nothing(self):
         a = make_app()
         with_members(a, 'ada')
@@ -430,6 +441,16 @@ class SigningUp(unittest.TestCase):
         for i in range(31):
             a.web('POST', '/unsubscribe', {}, {'e': f'm{i}@example.com'}, '2.2.2.2', '')
         self.assertEqual(a.store.members['m30@example.com']['status'], 'active')
+
+    def test_the_confirmation_mail_has_a_way_to_say_no_thanks(self):
+        a = make_app()
+        self.join(a)
+        sent = a.mailer.sent[0]
+        link = 'https://lists.example/unsubscribe?e=ada%40example.com'
+        self.assertIn(f'Do not want mail from this list? {link}', sent['text'])
+        self.assertEqual(sent['unsubscribe'], link)
+        a.web('POST', '/unsubscribe', {}, {'e': 'ada@example.com'}, '1.1.1.1', '')
+        self.assertNotIn('ada@example.com', a.store.members)  # the unconfirmed request is forgotten
 
     def test_someone_who_left_can_sign_up_again_and_a_blocked_one_cannot(self):
         a = make_app()

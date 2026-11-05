@@ -38,6 +38,7 @@ class Config:
     require_auth: bool = True
     subscribe_hour: int = 20  # sign-ups per hour, all together
     subscribe_ip_hour: int = 5  # and from one address
+    soft_bounces: int = 5  # temporary delivery failures in a month before an address is taken off
     send_pause: float = 0.2  # seconds between messages (SES's sending rate)
     prefix: str = 'inbound/'
 
@@ -66,6 +67,7 @@ class Config:
             require_auth=flag('REQUIRE_AUTH', 'true'),
             subscribe_hour=num('SUBSCRIBE_HOUR', 20),
             subscribe_ip_hour=num('SUBSCRIBE_IP_HOUR', 5),
+            soft_bounces=max(1, num('SOFT_BOUNCES', 5)),
             send_pause=float(env.get('SEND_PAUSE', '0.2') or 0),
             prefix=env.get('PREFIX', 'inbound/'),
         )
@@ -326,19 +328,30 @@ class App:
             self.sleep(cfg.send_pause)
         return self._done(mid, 'posted', sender=sender, sent=sent, failed=failed)
 
-    def _tell(self, to, subject, text):
+    def _tell(self, to, subject, text, leave_link=''):
+        """A message from the list itself. With leave_link it ends with a way to ask for no more, and says so in the List-Unsubscribe header."""
+        if leave_link:
+            text += f'\nDo not want mail from this list? {leave_link}\n'
         try:
             self.mailer.send(to=to, subject=subject, text=text, sender=formataddr((self.cfg.list_name, self.cfg.list_address)),
-                             reply_to=self.cfg.list_address, unsubscribe='')
+                             reply_to=self.cfg.list_address, unsubscribe=leave_link)
         except Exception as e:
             self.log(event='notice-failed', to=to, error=str(e)[:200])
 
     # ---------- bounces and complaints (SES -> SNS) ----------
 
+    def _keeps_failing(self, address):
+        """Counts one more temporary failure for the address; True on the SOFT_BOUNCES-th within a month (the count is then spent)."""
+        a = clean_address(address)
+        return bool(a) and not self.store.bump(f'sb#{a}', self.cfg.soft_bounces - 1, 30 * DAY, int(self.now()))
+
     def delivery_event(self, event):
         kind = event.get('eventType') or event.get('notificationType') or ''
-        if kind == 'Bounce' and (event.get('bounce') or {}).get('bounceType') == 'Permanent':
-            who, status = [r.get('emailAddress') for r in event['bounce'].get('bouncedRecipients', [])], 'bounced'
+        bounce = event.get('bounce') or {}
+        if kind == 'Bounce' and bounce.get('bounceType') == 'Permanent':
+            who, status = [r.get('emailAddress') for r in bounce.get('bouncedRecipients', [])], 'bounced'
+        elif kind == 'Bounce':  # a full mailbox, a server that is down: one is nothing, but an address that keeps failing is dead
+            who, status = [r.get('emailAddress') for r in bounce.get('bouncedRecipients', []) if self._keeps_failing(r.get('emailAddress'))], 'bounced'
         elif kind == 'Complaint':
             who, status = [r.get('emailAddress') for r in event['complaint'].get('complainedRecipients', [])], 'complained'
         else:
@@ -398,7 +411,8 @@ class App:
         self._tell(a, f'Confirm joining the {cfg.list_name} list',
                    f'Someone (hopefully you) asked to join the {cfg.list_name} list with this address.\n\n'
                    f'To join, open this link and press the button:\n{link}\n\n'
-                   f'If it was not you, ignore this message and nothing will happen.\n')
+                   f'If it was not you, ignore this message and nothing will happen.\n',
+                   leave_link=f'{site}/unsubscribe?e={quote(a)}')
         return True
 
     def confirm(self, address, token):
@@ -418,4 +432,8 @@ class App:
         now = int(self.now())
         if not address or not self.store.bump(f'leave#{ip}#{now // 3600}', 30, 2 * 3600, now):
             return False
+        m = self.store.get_member(address)
+        if m and m['status'] == 'pending':  # someone who asked to join and changed their mind: forget the request
+            self.store.remove(address)
+            return True
         return self.store.set_status(address, 'unsubscribed', only_from='active')
