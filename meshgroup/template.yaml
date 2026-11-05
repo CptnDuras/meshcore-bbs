@@ -1,0 +1,171 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: The mesh group mailing list - SES receives mail for the list address, one Lambda passes it on and serves the sign-up page.
+
+Parameters:
+  ListAddress: {Type: String, Default: meshgroup@xerokuhl.com}
+  ListName: {Type: String, Default: Mesh Group}
+  SubjectTag: {Type: String, Default: '[meshgroup]'}
+  Posting: {Type: String, Default: anyone, AllowedValues: [anyone, members]}
+  SiteUrl: {Type: String, Default: '', Description: 'Where the sign-up page is seen, if it sits behind your own domain; empty = the Lambda function URL'}
+  SendPause: {Type: String, Default: '1.05', Description: 'Seconds between messages to the list. 1.05 suits the SES sandbox (1 a second); lower it once SES is out of the sandbox.'}
+  CodeBucket: {Type: String}
+  CodeKey: {Type: String}
+  RuleSetName: {Type: String, Default: meshgroup, Description: 'The SES receipt rule set the rule goes in. If the account has an active one, give its name here.'}
+  CreateRuleSet: {Type: String, Default: 'true', AllowedValues: ['true', 'false']}
+
+Conditions:
+  MakeRuleSet: !Equals [!Ref CreateRuleSet, 'true']
+
+Resources:
+  Table:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain # the member list outlives the stack
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: pk, AttributeType: S}]
+      KeySchema: [{AttributeName: pk, KeyType: HASH}]
+      TimeToLiveSpecification: {AttributeName: expires, Enabled: true}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+
+  Mailbox:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      PublicAccessBlockConfiguration: {BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true}
+      BucketEncryption: {ServerSideEncryptionConfiguration: [{ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}}]}
+      LifecycleConfiguration:
+        Rules: [{Id: empty-the-mailbox, Status: Enabled, Prefix: inbound/, ExpirationInDays: 7}]
+
+  MailboxPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Mailbox
+      PolicyDocument:
+        Statement:
+          - Sid: OnlySesMayLeaveMail
+            Effect: Allow
+            Principal: {Service: ses.amazonaws.com}
+            Action: s3:PutObject
+            Resource: !Sub '${Mailbox.Arn}/inbound/*'
+            Condition: {StringEquals: {'aws:SourceAccount': !Ref 'AWS::AccountId'}}
+          - Sid: NothingOverPlainHttp
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: [!GetAtt Mailbox.Arn, !Sub '${Mailbox.Arn}/*']
+            Condition: {Bool: {'aws:SecureTransport': 'false'}}
+
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement: [{Effect: Allow, Principal: {Service: lambda.amazonaws.com}, Action: 'sts:AssumeRole'}]
+      ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole']
+      Policies:
+        - PolicyName: meshgroup
+          PolicyDocument:
+            Statement:
+              - {Effect: Allow, Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem, dynamodb:Scan], Resource: !GetAtt Table.Arn}
+              - {Effect: Allow, Action: [s3:GetObject, s3:DeleteObject], Resource: !Sub '${Mailbox.Arn}/inbound/*'}
+              - {Effect: Allow, Action: s3:ListBucket, Resource: !GetAtt Mailbox.Arn} # without it a missing object reads as "access denied"
+              - Effect: Allow
+                Action: ses:SendEmail
+                Resource:
+                  - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
+                  - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/${ConfigSet}'
+              - {Effect: Allow, Action: 'lambda:GetFunctionUrlConfig', Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:meshgroup'}
+
+  Function:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: meshgroup
+      Runtime: python3.13
+      Handler: handler.lambda_handler
+      Timeout: 900 # sending to a few hundred people one by one, a second apart in the SES sandbox
+      MemorySize: 256
+      ReservedConcurrentExecutions: 5
+      Role: !GetAtt Role.Arn
+      Code: {S3Bucket: !Ref CodeBucket, S3Key: !Ref CodeKey}
+      Environment:
+        Variables:
+          LIST_ADDRESS: !Ref ListAddress
+          LIST_NAME: !Ref ListName
+          SUBJECT_TAG: !Ref SubjectTag
+          POSTING: !Ref Posting
+          SEND_PAUSE: !Ref SendPause
+          SITE_URL: !Ref SiteUrl
+          TABLE: !Ref Table
+          BUCKET: !Ref Mailbox
+          CONFIG_SET: !Ref ConfigSet
+
+  FunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties: {AuthType: NONE, TargetFunctionArn: !GetAtt Function.Arn}
+
+  FunctionUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties: {Action: 'lambda:InvokeFunctionUrl', FunctionName: !Ref Function, Principal: '*', FunctionUrlAuthType: NONE}
+
+  SesMayInvoke:
+    Type: AWS::Lambda::Permission
+    Properties: {Action: 'lambda:InvokeFunction', FunctionName: !Ref Function, Principal: ses.amazonaws.com, SourceAccount: !Ref 'AWS::AccountId'}
+
+  SnsMayInvoke:
+    Type: AWS::Lambda::Permission
+    Properties: {Action: 'lambda:InvokeFunction', FunctionName: !Ref Function, Principal: sns.amazonaws.com, SourceArn: !Ref Reports}
+
+  Reports:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription: [{Protocol: lambda, Endpoint: !GetAtt Function.Arn}]
+
+  ReportsPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref Reports]
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ses.amazonaws.com}
+            Action: 'sns:Publish'
+            Resource: !Ref Reports
+            Condition: {StringEquals: {'AWS:SourceAccount': !Ref 'AWS::AccountId'}}
+
+  ConfigSet:
+    Type: AWS::SES::ConfigurationSet
+    Properties: {Name: meshgroup}
+
+  BounceReports:
+    Type: AWS::SES::ConfigurationSetEventDestination
+    Properties:
+      ConfigurationSetName: !Ref ConfigSet
+      EventDestination:
+        Name: bounces-and-complaints
+        Enabled: true
+        MatchingEventTypes: [bounce, complaint]
+        SnsDestination: {TopicARN: !Ref Reports}
+
+  RuleSet:
+    Type: AWS::SES::ReceiptRuleSet
+    Condition: MakeRuleSet
+    Properties: {RuleSetName: !Ref RuleSetName}
+
+  Rule:
+    Type: AWS::SES::ReceiptRule
+    DependsOn: [MailboxPolicy, SesMayInvoke]
+    Properties:
+      RuleSetName: !If [MakeRuleSet, !Ref RuleSet, !Ref RuleSetName]
+      Rule:
+        Name: meshgroup
+        Enabled: true
+        ScanEnabled: true
+        TlsPolicy: Optional
+        Recipients: [!Ref ListAddress]
+        Actions:
+          - S3Action: {BucketName: !Ref Mailbox, ObjectKeyPrefix: inbound/}
+          - LambdaAction: {FunctionArn: !GetAtt Function.Arn, InvocationType: Event}
+
+Outputs:
+  SignUpPage: {Value: !GetAtt FunctionUrl.FunctionUrl}
+  Table: {Value: !Ref Table}
+  Mailbox: {Value: !Ref Mailbox}
