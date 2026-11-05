@@ -1,0 +1,96 @@
+{
+ "Comment": "SES for xerokuhl.com: DKIM, custom MAIL FROM, DMARC (monitor only), and receiving for the mesh group list",
+ "Changes": [
+  {
+   "Action": "UPSERT",
+   "ResourceRecordSet": {
+    "Name": "ea243wvfeptf5tqyf2drjchbrspweedg._domainkey.xerokuhl.com",
+    "Type": "CNAME",
+    "TTL": 300,
+    "ResourceRecords": [
+     {
+      "Value": "ea243wvfeptf5tqyf2drjchbrspweedg.dkim.amazonses.com"
+     }
+    ]
+   }
+  },
+  {
+   "Action": "UPSERT",
+   "ResourceRecordSet": {
+    "Name": "mtgcbbiwlxad46sfxzfqvimgzo3bz6rn._domainkey.xerokuhl.com",
+    "Type": "CNAME",
+    "TTL": 300,
+    "ResourceRecords": [
+     {
+      "Value": "mtgcbbiwlxad46sfxzfqvimgzo3bz6rn.dkim.amazonses.com"
+     }
+    ]
+   }
+  },
+  {
+   "Action": "UPSERT",
+   "ResourceRecordSet": {
+    "Name": "xmj34xgsrds3grngdumqqg73pzmyjycb._domainkey.xerokuhl.com",
+    "Type": "CNAME",
+    "TTL": 300,
+    "ResourceRecords": [
+     {
+      "Value": "xmj34xgsrds3grngdumqqg73pzmyjycb.dkim.amazonses.com"
+     }
+    ]
+   }
+  },
+  {
+   "Action": "UPSERT",
+   "ResourceRecordSet": {
+    "Name": "mail.xerokuhl.com",
+    "Type": "MX",
+    "TTL": 300,
+    "ResourceRecords": [
+     {
+      "Value": "10 feedback-smtp.us-west-2.amazonses.com"
+     }
+    ]
+   }
+  },
+  {
+   "Action": "UPSERT",
+   "ResourceRecordSet": {
+    "Name": "mail.xerokuhl.com",
+    "Type": "TXT",
+    "TTL": 300,
+    "ResourceRecords": [
+     {
+      "Value": "\"v=spf1 include:amazonses.com ~all\""
+     }
+    ]
+   }
+  },
+  {
+   "Action": "UPSERT",
+   "ResourceRecordSet": {
+    "Name": "_dmarc.xerokuhl.com",
+    "Type": "TXT",
+    "TTL": 300,
+    "ResourceRecords": [
+     {
+      "Value": "\"v=DMARC1; p=none; adkim=r; aspf=r\""
+     }
+    ]
+   }
+  },
+  {
+   "Action": "UPSERT",
+   "ResourceRecordSet": {
+    "Name": "xerokuhl.com",
+    "Type": "MX",
+    "TTL": 300,
+    "ResourceRecords": [
+     {
+      "Value": "10 inbound-smtp.us-west-2.amazonaws.com"
+     }
+    ]
+   }
+  }
+ ]
+}

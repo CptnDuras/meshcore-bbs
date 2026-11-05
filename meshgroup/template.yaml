@@ -106,6 +106,10 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties: {Action: 'lambda:InvokeFunctionUrl', FunctionName: !Ref Function, Principal: '*', FunctionUrlAuthType: NONE}
 
+  FunctionUrlInvoke: # a public function URL needs this one too (AWS began requiring both in late 2025)
+    Type: AWS::Lambda::Permission
+    Properties: {Action: 'lambda:InvokeFunction', FunctionName: !Ref Function, Principal: '*', InvokedViaFunctionUrl: true}
+
   SesMayInvoke:
     Type: AWS::Lambda::Permission
     Properties: {Action: 'lambda:InvokeFunction', FunctionName: !Ref Function, Principal: ses.amazonaws.com, SourceAccount: !Ref 'AWS::AccountId'}
