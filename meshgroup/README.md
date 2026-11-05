@@ -12,6 +12,8 @@ One Lambda (`handler.py`, Python 3.13) answers all three: mail SES received, bou
 The Lambda has no public address of its own: the pages are served only at **https://groups.xerokuhl.com/** (API Gateway with a custom
 domain). The rules are in `app.py` and know nothing about AWS; `console.py` is the owner page; `store.py` is the DynamoDB table; `template.yaml` is everything else (one CloudFormation stack).
 
+The picture of all of this is `architecture.drawio` (open it at app.diagrams.net or in the draw.io app; two pages: the architecture and the checks one post passes).
+
 ## Deploy
 
 ```
