@@ -6,19 +6,16 @@
   admin.py remove ada@x.com    take someone off (and forget them)
   admin.py block spam@x.com    never mail them and refuse their posts
   admin.py unblock ada@x.com   let them sign up again
-  admin.py passwd [password]   set the password for the /admin page (made up for you and shown once if you give none)
 
 `add` skips the confirmation email: use it only for people who asked you to add them. TABLE (or the stack named by STACK, default meshgroup) says which table.
 """
 import os
-import secrets
 import sys
 import time
 
 import boto3
 
 import app
-import console
 from store import DynamoStore
 
 
@@ -35,7 +32,7 @@ def main(argv):
         print(__doc__)
         return 2
     cmd, args, store = argv[1], argv[2:], None
-    if cmd in ('add', 'list', 'remove', 'block', 'unblock', 'passwd'):
+    if cmd in ('add', 'list', 'remove', 'block', 'unblock'):
         store = table()
     now = int(time.time())
     if cmd == 'add' and args:
@@ -54,17 +51,6 @@ def main(argv):
             store.add_active(p[0], p[1], now, note='added by the list owner')
             added += 1
         print(f'{added} added, {skipped} already on the list or blocked')
-    elif cmd == 'passwd':
-        password = args[0] if args else secrets.token_urlsafe(15)
-        if len(password) < 12:
-            print('A password needs at least 12 characters.')
-            return 2
-        login = console.new_login(password)
-        store.set_login(login)
-        print('The owner password for /admin is now' + ('' if args else f':\n\n  {password}\n\nSave it; it is not kept anywhere in plain text.'))
-        print('\nLogging in also takes the six-digit code from an authenticator app. Add it with this link (or type the secret in):\n')
-        print(f'  {console.otp_uri(login["totp"], "meshgroup")}\n  secret: {login["totp"]}')
-        print('\nEveryone logged in was logged out.')
     elif cmd == 'list':
         members = sorted(store.list_all(), key=lambda m: (m.get('status', ''), m['email']))
         for m in members:

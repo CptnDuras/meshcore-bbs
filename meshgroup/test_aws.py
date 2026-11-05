@@ -14,6 +14,56 @@ from test_meshgroup import GOOD, LIST, raw
 NOW = 1_800_000_000
 
 
+class FakeToken:
+    """What Cognito's token endpoint answers: a JSON body whose id_token carries the person's address (unsigned here; the code never reads the signature)."""
+
+    def __init__(self, email, aud='cid'):
+        import base64
+        import io
+        import json
+        part = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip('=')
+        self.body = io.BytesIO(json.dumps({'id_token': f'{part({"alg": "RS256"})}.{part({"email": email, "aud": aud})}.sig'}).encode())
+
+    def __enter__(self):
+        return self.body
+
+    def __exit__(self, *a):
+        return False
+
+
+class CognitoTests(unittest.TestCase):
+    def cognito(self, opener):
+        import handler
+        return handler.Cognito('auth.example', 'cid', 'sec', 'https://lists.example/admin/callback', opener)
+
+    def test_the_token_request_is_the_code_exchange_with_the_client_secret(self):
+        seen = []
+        self.cognito(lambda req, timeout: seen.append(req) or FakeToken('steve@example.com')).email('abc')
+        req = seen[0]
+        self.assertEqual(req.full_url, 'https://auth.example/oauth2/token')
+        self.assertIn('grant_type=authorization_code&code=abc', req.data.decode())
+        self.assertEqual(req.get_header('Authorization'), 'Basic Y2lkOnNlYw==')  # cid:sec
+
+    def test_the_address_comes_back_only_for_our_own_client(self):
+        self.assertEqual(self.cognito(lambda r, timeout: FakeToken('steve@example.com')).email('abc'), 'steve@example.com')
+        self.assertIsNone(self.cognito(lambda r, timeout: FakeToken('steve@example.com', aud='someone-else')).email('abc'))
+
+    def test_a_refused_or_broken_exchange_is_nobody(self):
+        def refused(req, timeout):
+            raise OSError('HTTP Error 400')
+        self.assertIsNone(self.cognito(refused).email('abc'))
+        self.assertIsNone(self.cognito(lambda r, timeout: FakeToken('x')).email(''))  # no code, no request
+
+        class Junk:
+            def __enter__(self):
+                import io
+                return io.BytesIO(b'<html>')
+
+            def __exit__(self, *a):
+                return False
+        self.assertIsNone(self.cognito(lambda r, timeout: Junk()).email('abc'))
+
+
 @unittest.skipIf(mock_aws is None, 'moto is not installed')
 class AwsTests(unittest.TestCase):
     def setUp(self):
@@ -92,18 +142,24 @@ class AwsTests(unittest.TestCase):
         self.assertEqual(r['statusCode'], 413)
 
     def test_the_owner_page_through_the_api_shape(self):
-        import console
         from urllib.parse import quote
-        import time
-        record = console.new_login('correct horse battery')
-        self.store.set_login(record)
-        code = console.totp(record['totp'], int(time.time()) // 30)
-        ev = lambda m, p, body='', cookies=None: {'requestContext': {'http': {'method': m, 'path': p, 'sourceIp': '1.2.3.4'}, 'domainName': 'groups.example'},
-                                                  'rawQueryString': '', 'body': body, 'cookies': cookies or [], 'isBase64Encoded': False}
-        r = self.handler.lambda_handler(ev('POST', '/admin/login', f'password=correct+horse+battery&code=000000'), None)
-        self.assertEqual(r['statusCode'], 401)
-        r = self.handler.lambda_handler(ev('POST', '/admin/login', f'password=correct+horse+battery&code={code}'), None)
-        self.assertEqual((r['statusCode'], r['headers']['Location']), (303, '/admin'))
+        os.environ.update({'OWNER_EMAILS': 'steve@example.com', 'COGNITO_DOMAIN': 'auth.example', 'COGNITO_CLIENT_ID': 'cid', 'COGNITO_CLIENT_SECRET': 'sec'})
+        who = {'good': 'steve@example.com', 'stranger': 'eve@example.com'}
+        self.handler.build().console.idp.opener = lambda req, timeout: FakeToken(who[req.data.decode().split('code=')[1].split('&')[0]])
+        ev = lambda m, p, body='', cookies=None, query='': {
+            'requestContext': {'http': {'method': m, 'path': p, 'sourceIp': '1.2.3.4'}, 'domainName': 'groups.example'},
+            'rawQueryString': query, 'body': body, 'cookies': cookies or [], 'isBase64Encoded': False}
+        r = self.handler.lambda_handler(ev('GET', '/admin/login'), None)
+        self.assertEqual(r['statusCode'], 303)
+        self.assertTrue(r['headers']['Location'].startswith('https://auth.example/oauth2/authorize?response_type=code&client_id=cid&redirect_uri=https%3A%2F%2Flists.example%2Fadmin%2Fcallback'))
+        state_cookie = r['cookies'][0].split(';')[0]
+        state = r['headers']['Location'].split('state=')[1]
+        r = self.handler.lambda_handler(ev('GET', '/admin/callback', cookies=[state_cookie], query=f'code=stranger&state={state}'), None)
+        self.assertEqual((r['statusCode'], 'cookies' in r), (403, False))
+        r = self.handler.lambda_handler(ev('GET', '/admin/login'), None)
+        state_cookie, state = r['cookies'][0].split(';')[0], r['headers']['Location'].split('state=')[1]
+        r = self.handler.lambda_handler(ev('GET', '/admin/callback', cookies=[state_cookie], query=f'code=good&state={state}'), None)
+        self.assertEqual(r['statusCode'], 200)
         cookie = r['cookies'][0].split(';')[0]
         page = self.handler.lambda_handler(ev('GET', '/admin', cookies=[cookie]), None)['body']
         token = page.split('name="c" value="')[1].split('"')[0]

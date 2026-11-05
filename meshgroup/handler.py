@@ -1,9 +1,12 @@
 """The Lambda: the one place that talks to AWS. It answers three kinds of event: a message SES received for the list, a delivery
 report (bounce or complaint) from SES via SNS, and a web request for the sign-up and owner pages (from API Gateway)."""
 import base64
+import hashlib
 import json
 import os
-from urllib.parse import parse_qs
+from dataclasses import replace
+from urllib.parse import parse_qs, urlencode
+from urllib.request import Request, urlopen
 
 import boto3
 
@@ -45,6 +48,32 @@ class Mailer:
                                 'Body': {'Text': {'Data': text, 'Charset': 'UTF-8'}}, 'Headers': headers}}, **kw)
 
 
+class Cognito:
+    """Sign-in through a Cognito user pool's hosted page (which passes it on to IAM Identity Center). The token comes straight from Cognito's
+    token endpoint over TLS in answer to our own request, which is what lets us read who signed in without checking a signature."""
+
+    def __init__(self, domain, client_id, secret, redirect, opener=urlopen):
+        self.domain, self.client_id, self.secret, self.redirect, self.opener = domain, client_id, secret, redirect, opener
+
+    def login_url(self, state):
+        return f'https://{self.domain}/oauth2/authorize?' + urlencode(
+            {'response_type': 'code', 'client_id': self.client_id, 'redirect_uri': self.redirect, 'scope': 'openid email', 'state': state})
+
+    def email(self, code):
+        if not code:
+            return None
+        basic = base64.b64encode(f'{self.client_id}:{self.secret}'.encode()).decode()
+        form = urlencode({'grant_type': 'authorization_code', 'code': code, 'redirect_uri': self.redirect, 'client_id': self.client_id})
+        req = Request(f'https://{self.domain}/oauth2/token', form.encode(), {'Authorization': f'Basic {basic}', 'Content-Type': 'application/x-www-form-urlencoded'})
+        try:
+            with self.opener(req, timeout=5) as r:
+                token = json.load(r)['id_token']
+            claims = json.loads(base64.urlsafe_b64decode(token.split('.')[1] + '=='))
+        except (OSError, ValueError, KeyError, IndexError):
+            return None
+        return claims.get('email') if claims.get('aud') == self.client_id else None
+
+
 _app = None
 
 
@@ -53,10 +82,14 @@ def build():
     if _app is None:
         env = os.environ
         cfg = app.Config.from_env(env)
-
+        idp = None
+        if env.get('COGNITO_DOMAIN'):
+            secret = env['COGNITO_CLIENT_SECRET']
+            idp = Cognito(env['COGNITO_DOMAIN'], env['COGNITO_CLIENT_ID'], secret, f'{cfg.site_url}/admin/callback')
+            cfg = replace(cfg, session_key=hashlib.sha256(('session|' + secret).encode()).hexdigest())  # a new client secret signs everyone out
         _app = app.App(cfg, DynamoStore(boto3.resource('dynamodb').Table(env['TABLE'])),
                        Mailer(boto3.client('sesv2'), env.get('CONFIG_SET', '')),
-                       Objects(boto3.client('s3'), env['BUCKET']))
+                       Objects(boto3.client('s3'), env['BUCKET']), idp=idp)
     return _app
 
 
@@ -73,7 +106,8 @@ def web(a, event):
     ip = http.get('sourceIp', '')
     if owner:
         cookies = dict(c.split('=', 1) for c in event.get('cookies') or [] if '=' in c)
-        r = a.console.handle(http['method'], http['path'], one(body), ip, cookies)
+        form = one(event.get('rawQueryString')) if http['method'] == 'GET' else one(body)  # the provider's answer comes back in the address
+        r = a.console.handle(http['method'], http['path'], form, ip, cookies)
         return r.status, r.html, r.cookie, r.location
     status, html = a.web(http['method'], http['path'], one(event.get('rawQueryString')), one(body), ip,
                          event['requestContext'].get('domainName', ''))

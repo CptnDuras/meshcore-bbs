@@ -6,7 +6,8 @@
 #   DRY_RUN=1 meshgroup/deploy.sh    check the template and show what it would do, change nothing
 #
 # Uses the AWS CLI's default profile. Settings (environment): REGION (us-west-2), LIST_ADDRESS (meshgroup@xerokuhl.com), LIST_NAME, POSTING (anyone|members),
-# SITE_HOST (where the pages are served: groups.xerokuhl.com; needs the certificate that domain.sh makes), SEND_PAUSE (seconds between messages; 1.05 in the SES sandbox).
+# SITE_HOST (where the pages are served: groups.xerokuhl.com; needs the certificate that domain.sh makes), SEND_PAUSE (seconds between messages; 1.05 in the SES sandbox),
+# OWNER_EMAIL (who may use the owner page: their IAM Identity Center address), IDC_METADATA_URL (the Identity Center application's metadata; both are remembered from the last run).
 #
 # Not done here (it is your domain and your account):
 #   - the MX record that sends mail for the list address to SES (printed at the end; mail for the whole domain goes there)
@@ -26,11 +27,17 @@ DRY_RUN="${DRY_RUN:-0}"
 export AWS_DEFAULT_REGION="$REGION"
 
 say() { printf '%s\n' "$*"; }
+# A setting of the stack as it is now (empty if there is no stack yet), so that running this again keeps what an earlier run was given.
+current() { v="$(aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Parameters[?ParameterKey=='$1'].ParameterValue" --output text 2>/dev/null || true)"; [ "$v" = None ] && v=; printf '%s' "$v"; }
 change() { if [ "$DRY_RUN" = 1 ]; then say "  [dry run] $*" >&2; else "$@"; fi; }
 
 aws sts get-caller-identity >/dev/null 2>&1 || { say "Not signed in to AWS. Run: aws sso login" >&2; exit 1; }
 ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
 say "Account $ACCOUNT, region $REGION, list $LIST_ADDRESS"
+
+OWNER_EMAIL="${OWNER_EMAIL:-$(current OwnerEmail)}"
+IDC_METADATA_URL="${IDC_METADATA_URL:-$(current IdentityCenterMetadataUrl)}"
+[ -n "$OWNER_EMAIL" ] || { say "Say who may use the owner page (their IAM Identity Center address):  OWNER_EMAIL=you@example.com meshgroup/deploy.sh" >&2; exit 1; }
 
 say "1. checking the template"
 aws cloudformation validate-template --template-body "file://$HERE/template.yaml" >/dev/null
@@ -74,14 +81,16 @@ say "5. the stack $STACK"
 change aws cloudformation deploy --stack-name "$STACK" --template-file "$HERE/template.yaml" --capabilities CAPABILITY_IAM \
   --no-fail-on-empty-changeset --parameter-overrides \
   "ListAddress=$LIST_ADDRESS" "ListName=$LIST_NAME" "Posting=$POSTING" "DomainName=$SITE_HOST" "CertificateArn=$CERT" "SendPause=$SEND_PAUSE" \
-  "CodeBucket=$CODE_BUCKET" "CodeKey=$CODE_KEY" "RuleSetName=$RULESET" "CreateRuleSet=$CREATE"
+  "CodeBucket=$CODE_BUCKET" "CodeKey=$CODE_KEY" "RuleSetName=$RULESET" "CreateRuleSet=$CREATE" \
+  "OwnerEmail=$OWNER_EMAIL" "IdentityCenterMetadataUrl=$IDC_METADATA_URL"
 
 say
 if [ "$DRY_RUN" = 1 ]; then say "Dry run: nothing was changed."; exit 0; fi
 URL="$(aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='SignUpPage'].OutputValue" --output text)"
-say "Done. The sign-up page: $URL   (the owner page is ${URL}admin; set its password with: python3 meshgroup/admin.py passwd)"
+say "Done. The sign-up page: $URL   (the owner page is ${URL}admin)"
 say
 say "Still to do:"
+[ -n "$IDC_METADATA_URL" ] || say "  - owner sign-in is not connected to IAM Identity Center yet: see \"The owner page\" in the README, then run this again with IDC_METADATA_URL=..."
 [ "$CREATE" = true ] && [ "$ACTIVE" != "$RULESET" ] && say "  - activate the rule set:  aws ses set-active-receipt-rule-set --rule-set-name $RULESET --region $REGION"
 say "  - the MX record for $DOMAIN:  10 inbound-smtp.$REGION.amazonaws.com   (mail for every @$DOMAIN address then goes to SES, which accepts only $LIST_ADDRESS)"
 say "  - SES production access (console: SES > Account dashboard > Request production access); until then only verified addresses get mail"

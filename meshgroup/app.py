@@ -41,6 +41,8 @@ class Config:
     soft_bounces: int = 5  # temporary delivery failures in a month before an address is taken off
     send_pause: float = 0.2  # seconds between messages (SES's sending rate)
     prefix: str = 'inbound/'
+    owner_emails: tuple = ()  # who may use the owner page (their addresses at the identity provider)
+    session_key: str = ''  # signs the owner's session cookie; a different key signs everyone out
 
     @classmethod
     def from_env(cls, env):
@@ -70,6 +72,7 @@ class Config:
             soft_bounces=max(1, num('SOFT_BOUNCES', 5)),
             send_pause=float(env.get('SEND_PAUSE', '0.2') or 0),
             prefix=env.get('PREFIX', 'inbound/'),
+            owner_emails=tuple(e.strip().lower() for e in env.get('OWNER_EMAILS', '').split(',') if e.strip()),
         )
 
 
@@ -226,11 +229,11 @@ def parse_person(line):
 class App:
     """store: the members and counters; mailer: sends one message; objects: the stored incoming mail; site_url: () -> str."""
 
-    def __init__(self, cfg, store, mailer, objects, site_url=lambda: '', now=time.time, sleep=time.sleep, log=print):
+    def __init__(self, cfg, store, mailer, objects, site_url=lambda: '', now=time.time, sleep=time.sleep, log=print, idp=None):
         self.cfg, self.store, self.mailer, self.objects = cfg, store, mailer, objects
         self._site, self.now, self.sleep, self._log = site_url, now, sleep, log
         from console import Console  # console.py uses this module's helpers, so it is imported here, not at the top
-        self.console = Console(cfg, store, now, log=self.log)
+        self.console = Console(cfg, store, now, idp, log=self.log)
 
     def log(self, **kv):
         self._log(json.dumps(kv, default=str))

@@ -3,7 +3,7 @@ from html import escape as h
 
 STYLE = """body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;margin:2rem auto;padding:0 1rem;color:#1d2a30;background:#f6f4ef}
 h1{font-size:1.5rem}input{font:inherit;padding:.4rem;width:100%;box-sizing:border-box;margin:.2rem 0 .8rem}
-button{font:inherit;padding:.5rem 1.2rem;background:#b5541c;color:#fff;border:0;border-radius:4px;cursor:pointer}
+button,a.button{font:inherit;padding:.5rem 1.2rem;background:#b5541c;color:#fff;border:0;border-radius:4px;cursor:pointer;text-decoration:none}
 .hp{position:absolute;left:-9999px}small{color:#5a6a72}"""
 
 
@@ -54,9 +54,12 @@ def admin_notice(title, text):
 def admin_login(message=''):
     note = f'<p><strong>{h(message)}</strong></p>' if message else ''
     return page('Owner login', f"""{NOINDEX}<h1>Owner login</h1>{note}
-<form method="post" action="/admin/login"><label>Password<input name="password" type="password" required autocomplete="current-password"></label>
-<label>Code from your authenticator app<input name="code" inputmode="numeric" pattern="[0-9 ]{{6,7}}" maxlength="7" required autocomplete="one-time-code"></label>
-<button type="submit">Log in</button></form>""")
+<p>Sign in with your AWS account, which asks for your security key.</p>
+<p><a href="/admin/login" class="button">Sign in</a></p>""")
+
+
+def admin_continue():
+    return page('Signed in', f"""{NOINDEX}<meta http-equiv="refresh" content="0;url=/admin"><h1>Signed in</h1><p><a href="/admin">Continue to the owner page</a></p>""")
 
 
 def _row(m, csrf):

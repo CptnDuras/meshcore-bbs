@@ -13,9 +13,12 @@ Parameters:
   CodeKey: {Type: String}
   RuleSetName: {Type: String, Default: meshgroup, Description: 'The SES receipt rule set the rule goes in. If the account has an active one, give its name here.'}
   CreateRuleSet: {Type: String, Default: 'true', AllowedValues: ['true', 'false']}
+  OwnerEmail: {Type: String, Description: 'The address (at IAM Identity Center) of the person who may use the owner page; several can be separated by commas'}
+  IdentityCenterMetadataUrl: {Type: String, Default: '', Description: 'The IAM Identity Center application metadata URL (empty on the first deploy, before that application exists: see the README)'}
 
 Conditions:
   MakeRuleSet: !Equals [!Ref CreateRuleSet, 'true']
+  HasIdentityCenter: !Not [!Equals [!Ref IdentityCenterMetadataUrl, '']]
 
 Resources:
   Table:
@@ -93,9 +96,50 @@ Resources:
           POSTING: !Ref Posting
           SEND_PAUSE: !Ref SendPause
           SITE_URL: !Sub 'https://${DomainName}'
+          OWNER_EMAILS: !Ref OwnerEmail
+          COGNITO_DOMAIN: !Sub '${PoolDomain}.auth.${AWS::Region}.amazoncognito.com'
+          COGNITO_CLIENT_ID: !Ref PoolClient
+          COGNITO_CLIENT_SECRET: !GetAtt PoolClient.ClientSecret
           TABLE: !Ref Table
           BUCKET: !Ref Mailbox
           CONFIG_SET: !Ref ConfigSet
+
+  # Owner sign-in: a Cognito user pool whose only way in is IAM Identity Center (where the hardware key is checked). Nobody signs up to the
+  # pool and it holds no passwords; the Lambda lets in only the address in OwnerEmail.
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: meshgroup-owner
+      AdminCreateUserConfig: {AllowAdminCreateUserOnly: true}
+      UserPoolTier: LITE
+
+  PoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties: {UserPoolId: !Ref UserPool, Domain: !Sub 'meshgroup-${AWS::AccountId}'}
+
+  IdentityCenter:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Condition: HasIdentityCenter
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: IdentityCenter
+      ProviderType: SAML
+      ProviderDetails: {MetadataURL: !Ref IdentityCenterMetadataUrl}
+      AttributeMapping: {email: email}
+
+  PoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: [IdentityCenter]
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: true
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email]
+      CallbackURLs: [!Sub 'https://${DomainName}/admin/callback']
+      SupportedIdentityProviders: !If [HasIdentityCenter, [IdentityCenter], [COGNITO]]
+      IdTokenValidity: 5
+      TokenValidityUnits: {IdToken: minutes}
 
   # The web pages are reached only through the list's own domain: the API has no address of its own, and the function has no public URL.
   Api:
@@ -195,6 +239,8 @@ Resources:
 Outputs:
   SignUpPage: {Value: !Sub 'https://${DomainName}/'}
   OwnerPage: {Value: !Sub 'https://${DomainName}/admin'}
+  SamlAcsUrl: {Value: !Sub 'https://${PoolDomain}.auth.${AWS::Region}.amazoncognito.com/saml2/idpresponse', Description: 'Application ACS URL for the IAM Identity Center application'}
+  SamlAudience: {Value: !Sub 'urn:amazon:cognito:sp:${UserPool}', Description: 'Application SAML audience for the IAM Identity Center application'}
   AliasTarget: {Value: !GetAtt Domain.RegionalDomainName, Description: 'what the DomainName record points at'}
   AliasZone: {Value: !GetAtt Domain.RegionalHostedZoneId}
   Table: {Value: !Ref Table}

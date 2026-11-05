@@ -51,14 +51,6 @@ class FakeStore:
     def put_blocked(self, a, now):
         self.members[a] = {'email': a, 'name': '', 'token': '', 'status': 'blocked'}
 
-    login = None
-
-    def get_login(self):
-        return self.login
-
-    def set_login(self, record):
-        self.login = record
-
     def count_active(self):
         return len(self.list_active())
 
@@ -503,75 +495,108 @@ class SigningUp(unittest.TestCase):
 
 class Owner(unittest.TestCase):
     """The /admin page: login, session cookie, and changes to the list."""
-    PASSWORD = 'correct horse battery'
+    OWNER = 'steve@example.com'
+
+    class Idp:
+        """The identity provider: codes it has handed out, and whose they are."""
+        def __init__(self):
+            self.codes = {}
+
+        def login_url(self, state):
+            return f'https://idp.example/authorize?state={state}'
+
+        def email(self, code):
+            return self.codes.pop(code, None)
 
     def setUp(self):
         import console
         self.console = console
         self.a = make_app()
-        self.a.store.set_login(console.new_login(self.PASSWORD))
+        self.a.cfg.owner_emails, self.a.cfg.session_key = (self.OWNER,), 'k' * 64
+        self.a.console.idp = self.idp = self.Idp()
 
     def go(self, method, path, form=None, cookies=None, ip='9.9.9.9'):
         return self.a.console.handle(method, path, form or {}, ip, cookies or {})
 
-    def code(self, offset=0):
-        return self.console.totp(self.a.store.get_login()['totp'], NOW // 30 + offset)
+    def cookie_of(self, reply):
+        name, value = reply.cookie.split(';')[0].split('=', 1)
+        return {name: value}
+
+    def sign_in(self, who=OWNER, code='c1', ip='9.9.9.9'):
+        """The whole round trip: start, the provider answers with `code` for `who`, come back."""
+        start = self.go('GET', '/admin/login', ip=ip)
+        self.assertEqual(start.status, 303)
+        state = start.location.split('state=')[1]
+        self.idp.codes[code] = who
+        return self.go('GET', '/admin/callback', {'code': code, 'state': state}, self.cookie_of(start), ip=ip)
 
     def login(self):
-        r = self.go('POST', '/admin/login', {'password': self.PASSWORD, 'code': self.code()})
-        self.assertEqual((r.status, r.location), (303, '/admin'))
-        return {self.console.COOKIE: r.cookie.split(';')[0].split('=', 1)[1]}
+        r = self.sign_in()
+        self.assertEqual(r.status, 200)
+        return self.cookie_of(r)
 
     def csrf(self, cookies):
         return self.go('GET', '/admin', cookies=cookies).html.split('name="c" value="')[1].split('"')[0]
 
-    def test_nothing_shows_without_a_password_set_or_a_login(self):
-        self.a.store.login = None
+    def test_nothing_shows_until_sign_in_is_set_up_or_done(self):
+        self.a.cfg.owner_emails = ()
         self.assertEqual(self.go('GET', '/admin').status, 503)
-        self.a.store.set_login(self.console.new_login(self.PASSWORD))
+        self.a.cfg.owner_emails = (self.OWNER,)
         html = self.go('GET', '/admin').html
-        self.assertIn('Password', html)
+        self.assertIn('href="/admin/login"', html)
         self.assertNotIn('Add people', html)
 
-    def test_the_password_logs_in_and_a_wrong_one_does_not(self):
-        self.assertEqual(self.go('POST', '/admin/login', {'password': 'nope', 'code': self.code()}).status, 401)
-        r = self.go('POST', '/admin/login', {'password': self.PASSWORD, 'code': self.code()})
+    def test_the_start_goes_to_the_provider_with_a_state_kept_in_a_lax_cookie(self):
+        r = self.go('GET', '/admin/login')
+        self.assertTrue(r.location.startswith('https://idp.example/authorize?state='))
+        for part in ('Secure', 'HttpOnly', 'SameSite=Lax', 'Path=/'):
+            self.assertIn(part, r.cookie)
+        self.assertTrue(r.cookie.startswith('__Host-mgs='))
+
+    def test_the_owner_signs_in_and_gets_a_strict_session_on_a_page_that_moves_on_by_itself(self):
+        r = self.sign_in()
         for part in ('Secure', 'HttpOnly', 'SameSite=Strict', 'Path=/'):
             self.assertIn(part, r.cookie)
         self.assertTrue(r.cookie.startswith('__Host-mg='))
+        self.assertEqual((r.status, r.location), (200, ''))
+        self.assertIn('url=/admin', r.html)
+        self.assertIn('Add people', self.go('GET', '/admin', cookies=self.cookie_of(r)).html)
 
-    def test_logins_are_limited_per_address(self):
+    def test_someone_else_with_a_good_sign_in_is_turned_away(self):
+        r = self.sign_in(who='eve@example.com')
+        self.assertEqual((r.status, r.cookie), (403, ''))
+        self.assertEqual(self.sign_in(who=self.OWNER.upper(), code='c2').status, 200)  # the case of the address does not matter
+
+    def test_a_code_nobody_vouches_for_is_turned_away(self):
+        start = self.go('GET', '/admin/login')
+        r = self.go('GET', '/admin/callback', {'code': 'made-up', 'state': start.location.split('state=')[1]}, self.cookie_of(start))
+        self.assertEqual((r.status, r.cookie), (403, ''))
+
+    def test_the_answer_must_belong_to_the_sign_in_this_browser_started(self):
+        start = self.go('GET', '/admin/login')
+        state = start.location.split('state=')[1]
+        self.idp.codes['c'] = self.OWNER
+        other = self.go('GET', '/admin/login')
+        for form, cookies in (({'code': 'c', 'state': state}, {}),  # no cookie: the sign-in was started elsewhere
+                              ({'code': 'c', 'state': 'wrong'}, self.cookie_of(start)),
+                              ({'code': 'c', 'state': state}, self.cookie_of(other)),
+                              ({'code': 'c', 'state': state}, {'__Host-mgs': state + '.' + 'a' * 64})):
+            self.assertEqual(self.go('GET', '/admin/callback', form, cookies).status, 401)
+        self.assertEqual(self.go('GET', '/admin/callback', {'code': 'c', 'state': state}, self.cookie_of(start)).status, 200)
+
+    def test_an_answer_cannot_be_used_twice(self):
+        start = self.go('GET', '/admin/login')
+        form = {'code': 'c', 'state': start.location.split('state=')[1]}
+        self.idp.codes['c'] = self.OWNER
+        self.assertEqual(self.go('GET', '/admin/callback', form, self.cookie_of(start)).status, 200)
+        self.idp.codes['c'] = self.OWNER
+        self.assertEqual(self.go('GET', '/admin/callback', form, self.cookie_of(start)).status, 401)
+
+    def test_sign_ins_are_limited_per_address(self):
         for _ in range(10):
-            self.go('POST', '/admin/login', {'password': 'nope'})
-        form = {'password': self.PASSWORD, 'code': self.code()}
-        self.assertEqual(self.go('POST', '/admin/login', form).status, 429)
-        self.assertEqual(self.go('POST', '/admin/login', form, ip='8.8.8.8').status, 303)
-
-    def test_the_password_alone_is_not_enough(self):
-        for form in ({'password': self.PASSWORD}, {'password': self.PASSWORD, 'code': '123456'}, {'password': self.PASSWORD, 'code': ''},
-                     {'password': 'nope', 'code': self.code()}):
-            r = self.go('POST', '/admin/login', form)
-            self.assertEqual((r.status, r.cookie), (401, ''))
-            self.assertIn('password or the code', r.html)  # the same words whichever was wrong
-
-    def test_a_code_works_once_and_a_neighbouring_step_is_allowed_but_not_a_stale_one(self):
-        form = {'password': self.PASSWORD, 'code': self.code()}
-        self.assertEqual(self.go('POST', '/admin/login', form).status, 303)
-        self.assertEqual(self.go('POST', '/admin/login', form).status, 401)  # the same code again
-        self.assertEqual(self.go('POST', '/admin/login', {**form, 'code': self.code(-1)}).status, 303)  # a clock a little slow
-        self.assertEqual(self.go('POST', '/admin/login', {**form, 'code': self.code(-2)}).status, 401)
-        self.assertEqual(self.go('POST', '/admin/login', {**form, 'code': ' '.join([self.code(1)[:3], self.code(1)[3:]])}).status, 303)  # typed with a space
-
-    def test_the_known_codes_for_the_rfc_6238_test_secret(self):
-        secret = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ'  # "12345678901234567890"
-        self.assertEqual(self.console.totp(secret, 59 // 30), '287082')
-        self.assertEqual(self.console.totp(secret, 1111111109 // 30), '081804')
-
-    def test_an_old_record_with_no_authenticator_locks_the_page_instead_of_letting_the_password_in(self):
-        old = self.console.new_login(self.PASSWORD)
-        del old['totp']
-        self.a.store.set_login(old)
-        self.assertEqual(self.go('POST', '/admin/login', {'password': self.PASSWORD}).status, 503)
+            self.go('GET', '/admin/login')
+        self.assertEqual(self.go('GET', '/admin/login').status, 429)
+        self.assertEqual(self.go('GET', '/admin/login', ip='8.8.8.8').status, 303)
 
     def test_a_forged_or_expired_or_replaced_session_is_refused(self):
         cookies = self.login()
@@ -582,7 +607,7 @@ class Owner(unittest.TestCase):
         self.a.console.now = lambda: NOW + self.console.SESSION + 1
         self.assertNotIn('Add people', self.go('GET', '/admin', cookies=cookies).html)
         self.a.console.now = lambda: NOW
-        self.a.store.set_login(self.console.new_login(self.PASSWORD))  # a new password logs everyone out
+        self.a.cfg.session_key = 'j' * 64  # a new key signs everyone out
         self.assertNotIn('Add people', self.go('GET', '/admin', cookies=cookies).html)
 
     def test_a_change_needs_the_token_from_a_page_shown_to_that_session(self):
@@ -603,7 +628,8 @@ class Owner(unittest.TestCase):
 
     def test_adding_stops_at_the_size_limit(self):
         self.a = make_app(max_members=2)
-        self.a.store.set_login(self.console.new_login(self.PASSWORD))
+        self.a.cfg.owner_emails, self.a.cfg.session_key = (self.OWNER,), 'k' * 64
+        self.a.console.idp = self.idp
         cookies = self.login()
         r = self.go('POST', '/admin/add', {'people': 'a@example.com\nb@example.com\nc@example.com', 'c': self.csrf(cookies)}, cookies)
         self.assertIn('limit of 2', r.html)
