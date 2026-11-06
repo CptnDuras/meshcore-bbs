@@ -129,7 +129,6 @@ Resources:
 
   PoolClient:
     Type: AWS::Cognito::UserPoolClient
-    DependsOn: [IdentityCenter]
     Properties:
       UserPoolId: !Ref UserPool
       GenerateSecret: true
@@ -137,7 +136,7 @@ Resources:
       AllowedOAuthFlows: [code]
       AllowedOAuthScopes: [openid, email]
       CallbackURLs: [!Sub 'https://${DomainName}/admin/callback']
-      SupportedIdentityProviders: !If [HasIdentityCenter, [IdentityCenter], [COGNITO]]
+      SupportedIdentityProviders: !If [HasIdentityCenter, [!Ref IdentityCenter], [COGNITO]]
       IdTokenValidity: 5
       TokenValidityUnits: {IdToken: minutes}
 
