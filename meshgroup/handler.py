@@ -71,7 +71,14 @@ class Cognito:
             claims = json.loads(base64.urlsafe_b64decode(token.split('.')[1] + '=='))
         except (OSError, ValueError, KeyError, IndexError):
             return None
-        return claims.get('email') if claims.get('aud') == self.client_id else None
+        if claims.get('aud') != self.client_id:
+            return None
+        # The address comes as an attribute if the provider's mapping sends one; either way the subject it signed in is the address (the
+        # `identities` claim lists the provider and that subject), and this client accepts no other provider.
+        for who in claims.get('identities') or []:
+            if who.get('providerName') == 'IdentityCenter' and not claims.get('email'):
+                return who.get('userId')
+        return claims.get('email')
 
 
 _app = None

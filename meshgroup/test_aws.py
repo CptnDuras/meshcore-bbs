@@ -17,12 +17,13 @@ NOW = 1_800_000_000
 class FakeToken:
     """What Cognito's token endpoint answers: a JSON body whose id_token carries the person's address (unsigned here; the code never reads the signature)."""
 
-    def __init__(self, email, aud='cid'):
+    def __init__(self, email, aud='cid', **claims):
         import base64
         import io
         import json
         part = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip('=')
-        self.body = io.BytesIO(json.dumps({'id_token': f'{part({"alg": "RS256"})}.{part({"email": email, "aud": aud})}.sig'}).encode())
+        claims = {'aud': aud, **({'email': email} if email else {}), **claims}
+        self.body = io.BytesIO(json.dumps({'id_token': f'{part({"alg": "RS256"})}.{part(claims)}.sig'}).encode())
 
     def __enter__(self):
         return self.body
@@ -47,6 +48,14 @@ class CognitoTests(unittest.TestCase):
     def test_the_address_comes_back_only_for_our_own_client(self):
         self.assertEqual(self.cognito(lambda r, timeout: FakeToken('steve@example.com')).email('abc'), 'steve@example.com')
         self.assertIsNone(self.cognito(lambda r, timeout: FakeToken('steve@example.com', aud='someone-else')).email('abc'))
+
+    def test_with_no_email_attribute_the_signed_in_subject_is_the_address(self):
+        who = [{'providerName': 'IdentityCenter', 'userId': 'steve@example.com'}]
+        self.assertEqual(self.cognito(lambda r, timeout: FakeToken(None, identities=who)).email('abc'), 'steve@example.com')
+        self.assertEqual(self.cognito(lambda r, timeout: FakeToken('a@example.com', identities=who)).email('abc'), 'a@example.com')  # an attribute wins
+        other = [{'providerName': 'Google', 'userId': 'eve@example.com'}]
+        self.assertIsNone(self.cognito(lambda r, timeout: FakeToken(None, identities=other)).email('abc'))  # only our provider counts
+        self.assertIsNone(self.cognito(lambda r, timeout: FakeToken(None)).email('abc'))
 
     def test_a_refused_or_broken_exchange_is_nobody(self):
         def refused(req, timeout):
