@@ -1,6 +1,6 @@
 # meshgroup — a very small mailing list
 
-`meshgroup@xerokuhl.com`: people on the list can write to it and the message goes to everyone else on it; anyone can sign their address up on a
+`meshgroup@xerokuhl.com`: people on the list can write to it and the message goes to everyone on it, themselves included; anyone can sign their address up on a
 web page. About the size of a groups.io list with none of the extras: no archive, no digests, no moderation queue.
 
 ```
@@ -42,7 +42,7 @@ address. From a terminal the same things are `admin.py add people.txt`, `list`, 
 - **Sign-up** takes an address and optional name, then mails a link. Opening the link shows a button; pressing it joins (so a mail scanner that
   opens links joins no one). The page gives the same answer for every address, so it cannot be used to find out who is on the list. One
   confirmation a day per address; 5 per hour from one place and 20 an hour in all; a hidden field catches bots.
-- **Posting**: the message goes to every active member except the sender, one email each, from the list address as "Ada Lovelace via Mesh
+- **Posting**: the message goes to every active member, the sender included (so they see it came through), one email each, from the list address as "Ada Lovelace via Mesh
   Group", subject tagged `[meshgroup]`, text only (attachments are dropped and the post says so). The footer says who the message is from, offers a link to share for signing up
   (`https://groups.xerokuhl.com/`), and has the leave link (also sent as `List-Unsubscribe`). A reply
   goes to the whole list. Only active members may post (`POSTING=members`, the default); mail from anyone else is dropped without a reply. `POSTING=anyone` opens it.

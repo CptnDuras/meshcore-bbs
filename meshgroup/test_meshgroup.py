@@ -152,12 +152,12 @@ class Helpers(unittest.TestCase):
 
 
 class Posting(unittest.TestCase):
-    def test_a_post_goes_to_everyone_else_with_the_list_as_sender(self):
+    def test_a_post_goes_to_everyone_on_the_list_the_sender_included_with_the_list_as_sender(self):
         a = make_app()
         with_members(a, 'ada', 'bob', 'cy')
         self.assertEqual(post(a, raw()), 'posted')
-        self.assertEqual(sorted(m['to'] for m in a.mailer.sent), ['bob@example.com', 'cy@example.com'])
-        m = a.mailer.sent[0]
+        self.assertEqual(sorted(m['to'] for m in a.mailer.sent), ['ada@example.com', 'bob@example.com', 'cy@example.com'])
+        m = next(m for m in a.mailer.sent if m['to'] == 'bob@example.com')
         self.assertEqual(m['subject'], '[meshgroup] Net tonight')
         self.assertEqual(m['sender'], 'Ada Lovelace via Mesh Group <meshgroup@xerokuhl.com>')
         self.assertEqual(m['reply_to'], LIST)
@@ -173,21 +173,21 @@ class Posting(unittest.TestCase):
         with_members(a, 'ada', 'bob', 'cy')
         post(a, raw())
         links = {m['to']: m['unsubscribe'] for m in a.mailer.sent}
-        self.assertEqual(len(set(links.values())), 2)
+        self.assertEqual(len(set(links.values())), 3)
 
     def test_the_same_message_is_not_passed_on_twice(self):
         a = make_app()
         with_members(a, 'ada', 'bob')
         self.assertEqual(post(a, raw()), 'posted')
         self.assertEqual(post(a, raw()), 'duplicate')
-        self.assertEqual(len(a.mailer.sent), 1)
+        self.assertEqual(len(a.mailer.sent), 2)  # once to each of the two, not twice
 
     def test_one_failed_send_does_not_stop_the_rest(self):
         a = make_app()
         with_members(a, 'ada', 'bob', 'cy', 'dee')
         a.mailer.fail_for = {'bob@example.com'}
         self.assertEqual(post(a, raw()), 'posted')
-        self.assertEqual(sorted(m['to'] for m in a.mailer.sent), ['cy@example.com', 'dee@example.com'])
+        self.assertEqual(sorted(m['to'] for m in a.mailer.sent), ['ada@example.com', 'cy@example.com', 'dee@example.com'])
 
     def test_only_people_on_the_list_may_post_unless_the_list_is_opened(self):
         self.assertEqual(app.Config(list_address=LIST).posting, 'members')  # the default

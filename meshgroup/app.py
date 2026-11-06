@@ -300,7 +300,7 @@ class App:
             return self._done(mid, 'rejected', reason='not a member', sender=sender)
         if not text:
             return self._done(mid, 'rejected', reason='no text', sender=sender)
-        members = [m for m in self.store.list_active() if m['email'] != sender]
+        members = self.store.list_active()  # the sender too: a post that comes back is how they know it went through
         if not members:
             return self._done(mid, 'rejected', reason='no one to send to', sender=sender)
         if len(members) > cfg.max_members:
