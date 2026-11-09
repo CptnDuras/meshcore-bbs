@@ -18,10 +18,14 @@ struct TraceArrival {
 pub struct McTrace {
 pub mut:
 	mc       &meshcore.MeshCore
-	arrivals chan TraceArrival = chan TraceArrival{cap: 16}
+	arrivals chan TraceArrival   = chan TraceArrival{cap: 16}
+	answers  chan meshcore.Event = chan meshcore.Event{cap: 64}
 mut:
 	tag u32
 }
+
+// discover_wait_ms is how long to listen for DISCOVER answers: each repeater waits a random, widened moment before it replies.
+const discover_wait_ms = 8000
 
 // attach starts listening for trace answers. Call once after the radio is open.
 pub fn (mut t McTrace) attach() {
@@ -38,7 +42,53 @@ pub fn (mut t McTrace) attach() {
 			} // nobody is waiting and the channel is full: the answer is stale anyway
 		}
 	})
+	answers := t.answers
+	t.mc.subscribe(.discover_resp, fn [answers] (ev meshcore.Event) {
+		select {
+			answers <- ev {
+			}
+			else {
+			} // nobody is listening and the channel is full: a stale answer
+		}
+	})
 	t.tag = u32(time.now().unix_nano())
+}
+
+// discover sends one zero-hop request and gathers the answers that carry its tag, keeping the last of any node that answers twice.
+pub fn (mut t McTrace) discover() ![]Neighbour {
+	t.tag++
+	tag := t.tag
+	for { // forget answers to an earlier request
+		select {
+			_ := <-t.answers {
+			}
+			else {
+				break
+			}
+		}
+	}
+	t.mc.send_discover(tag)!
+	deadline := time.ticks() + discover_wait_ms
+	mut found := map[string]Neighbour{}
+	for time.ticks() < deadline {
+		select {
+			ev := <-t.answers {
+				p := ev.payload
+				if p.discover_tag != tag || p.discover_type != meshcore.adv_type_repeater || p.discover_key.len < 6 {
+					continue
+				}
+				id := p.discover_key[..6].hex()
+				found[id] = Neighbour{
+					id:        id
+					heard_snr: p.snr
+					their_snr: p.discover_snr
+				}
+			}
+			50 * time.millisecond {
+			}
+		}
+	}
+	return found.values()
 }
 
 // wait_ms is how long to wait for an answer: what the radio estimated for the trip, with a margin, within sane bounds.
