@@ -46,15 +46,35 @@ pub fn scan_due(now i64, tz_offset i64, last_requested i64) bool {
 	return false
 }
 
-// repeaters_from_names picks the repeaters out of the contact names: type repeater, with a full 6 byte key, advertised recently enough.
-pub fn repeaters_from_names(names []NodeName, now i64) []Repeater {
+// A name of at least this many hex digits (2 bytes) in a recent path points at one repeater well enough to show it is alive.
+const min_alive_name_len = 4
+
+// alive_in_paths says whether a recent path carried a name that starts this id: a repeater that forwards traffic is alive even if its advert is old.
+fn alive_in_paths(id string, heard []SeenPair, now i64) bool {
+	for p in heard {
+		if now - p.last > heard_max_age_secs {
+			continue
+		}
+		for name in [p.a, p.b] {
+			if name.len >= min_alive_name_len && id.starts_with(name) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// repeaters_from_names picks the repeaters out of the contact names: type repeater, with a full 6 byte key, advertised recently enough or seen
+// forwarding in a recent path.
+pub fn repeaters_from_names(names []NodeName, heard []SeenPair, now i64) []Repeater {
 	mut out := []Repeater{}
 	for n in names {
 		id := n.pubkey_prefix.to_lower()
 		if n.contact_type != contact_type_repeater || id.len != 12 {
 			continue
 		}
-		if n.last_advert > 0 && now - n.last_advert > heard_max_age_secs {
+		if n.last_advert > 0 && now - n.last_advert > heard_max_age_secs
+			&& !alive_in_paths(id, heard, now) {
 			continue
 		}
 		out << Repeater{
@@ -142,8 +162,9 @@ pub fn (mut r LinkScanRunner) tick(now i64, tz_offset i64, mut store Store, mut 
 
 fn (mut r LinkScanRunner) begin(id int, now i64, mut store Store) {
 	r.before_start()
-	r.repeater = repeaters_from_names(store.list_node_names(8000), now)
-	observed := candidate_edges(store.list_path_pairs(), r.repeater)
+	pairs := store.list_path_pairs()
+	r.repeater = repeaters_from_names(store.list_node_names(8000), pairs, now)
+	observed := candidate_edges(pairs, r.repeater)
 	r.scanner = new_scanner(r.repeater, observed, scan_max_probes)
 	r.scan_id = id
 	r.running = true

@@ -89,8 +89,18 @@ fn test_repeaters_from_names_keeps_only_recent_repeaters() {
 		contact('dd4444444444', 'Old', 2, now - 15 * 24 * 3600), // gone quiet
 		contact('ee55', 'Short', 2, now - 10), // not a full prefix
 		contact('ff6666666666', 'NoTime', 2, 0)] // advert time unknown: kept
-	reps := repeaters_from_names(names, now)
+	reps := repeaters_from_names(names, [], now)
 	assert reps.map(it.id) == ['aa1111111111', 'ff6666666666']
+}
+
+fn test_a_repeater_with_an_old_advert_is_kept_if_a_recent_path_names_it() {
+	now := i64(2_000_000_000)
+	names := [contact('dabb6ece78ed', 'dabb', 2, now - 500 * 24 * 3600),
+		contact('dd4444444444', 'Old', 2, now - 500 * 24 * 3600)]
+	heard := [SeenPair{'19e0', 'dabb', 4, now - 60}, SeenPair{'dd', 'ee', 9, now - 60},
+		SeenPair{'dd44', 'ee', 3, now - 30 * 24 * 3600}]
+	// one byte names are too vague to prove life; a 2 byte name in a stale path does not count either
+	assert repeaters_from_names(names, heard, now).map(it.id) == ['dabb6ece78ed']
 }
 
 fn test_probe_hashes_takes_the_first_bytes_of_each_id() {
