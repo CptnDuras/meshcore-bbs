@@ -45,6 +45,7 @@ fn main() {
 		exit(1)
 	}
 	println('BBS live as ${si.payload.name} @ ${si.payload.radio_freq} MHz. Waiting for callers...\n')
+	println(ensure_path_hash_mode(mut mc))
 
 	// Set this node's advertised friendly name so neighbours see 'MESHBBS'
 	// (overridable via arg 4). Then advert once so the new name propagates.
