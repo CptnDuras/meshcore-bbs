@@ -471,8 +471,8 @@ pub mut:
 }
 
 // RouteTest is one trace along a chosen route, queued by hand (SQL or a tool) so real routes can be compared. route is repeater ids (12 hex digits
-// each) joined by commas, out from this node; the trace goes out along them and back the same way. state is requested or done; snrs holds the SNR in
-// dB of each hop outward joined by commas, final_snr the last leg back to us.
+// each) joined by commas, out from this node; the trace goes out along them and back the same way, so a route of n repeaters is sent as 2n-1 hops.
+// state is requested or done; snrs holds the SNR in dB of each of those hops joined by commas, final_snr the last leg back to us.
 @[table: 'route_tests']
 pub struct RouteTest {
 pub mut:
