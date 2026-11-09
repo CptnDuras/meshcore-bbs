@@ -184,6 +184,43 @@ pub fn (mut s SqliteStore) recent_link_scans(limit int) []LinkScan {
 	} or { []LinkScan{} }
 }
 
+pub fn (mut s SqliteStore) add_route_test(route string, hash_size int, now i64) ! {
+	row := RouteTest{
+		requested: now
+		route:     route
+		hash_size: hash_size
+		state:     'requested'
+	}
+	sql s.db {
+		insert row into RouteTest
+	}!
+}
+
+pub fn (mut s SqliteStore) pending_route_test() ?RouteTest {
+	rows := sql s.db {
+		select from RouteTest where state == 'requested' order by id limit 1
+	} or { []RouteTest{} }
+	return if rows.len > 0 { rows[0] } else { none }
+}
+
+pub fn (mut s SqliteStore) finish_route_test(id int, now i64, reply TraceReply, ok bool) ! {
+	state := 'done'
+	good := if ok { 1 } else { 0 }
+	rtt := if ok { reply.rtt_ms } else { 0 }
+	snrs := reply.snrs.map('${it:.2f}').join(',')
+	final := reply.final_snr
+	sql s.db {
+		update RouteTest set state = state, finished = now, ok = good, rtt_ms = rtt, snrs = snrs,
+		final_snr = final where id == id
+	}!
+}
+
+pub fn (mut s SqliteStore) list_route_tests(limit int) []RouteTest {
+	return sql s.db {
+		select from RouteTest order by id desc limit limit
+	} or { []RouteTest{} }
+}
+
 // close_stale_link_scans marks a scan that was running when the daemon stopped as done, so a restart does not leave it running for ever.
 pub fn (mut s SqliteStore) close_stale_link_scans(now i64) {
 	sql s.db {
