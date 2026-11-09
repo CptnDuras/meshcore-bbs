@@ -241,3 +241,27 @@ fn test_a_scan_with_no_repeaters_finishes_at_once() {
 	assert s.recent_link_scans(1)[0].state == 'done'
 	assert radio.sent.len == 0
 }
+
+fn test_before_start_runs_once_as_a_scan_begins() {
+	now := i64(1794787200 + 5 * 3600)
+	mut s := new_run_store()
+	mut radio := FakeRadio{}
+	mut calls := &CallCount{}
+	mut r := LinkScanRunner{
+		gap_secs:     0
+		before_start: fn [mut calls] () {
+			calls.n++
+		}
+	}
+	r.tick(now, 0, mut s, mut radio)
+	assert calls.n == 0 // nothing is asked for yet
+	s.request_link_scan('sysop', now)!
+	run_to_end(mut r, mut s, mut radio, now)
+	assert calls.n == 1
+}
+
+// a closure cannot append to a captured array, so the hook counts through a struct on the heap
+struct CallCount {
+mut:
+	n int
+}
