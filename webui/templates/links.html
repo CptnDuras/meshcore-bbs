@@ -1,0 +1,42 @@
+@include 'header.html'
+<h2>Repeater links</h2>
+<p>Signal and delay measured between repeaters by trace probes. The BBS probes four times a day (03:00, 09:00, 15:00, 21:00) and whenever asked.
+Delay is the time a packet takes over one hop, including the wait a repeater adds before passing it on.</p>
+<form method="post" action="/links/scan">
+	@if busy
+		<button type="submit" disabled>A scan is queued or running</button>
+	@else
+		<button type="submit">Scan now</button>
+	@end
+</form>
+<h3>Links</h3>
+<table>
+	<tr>
+		@for hh in links.headers
+			<th>@{hh}</th>
+		@end
+	</tr>
+	@for r in links.rows
+		<tr>
+			@for c in r.cells
+				<td>@{c}</td>
+			@end
+		</tr>
+	@end
+</table>
+<h3>Recent scans</h3>
+<table>
+	<tr>
+		@for hh in scans.headers
+			<th>@{hh}</th>
+		@end
+	</tr>
+	@for r in scans.rows
+		<tr>
+			@for c in r.cells
+				<td>@{c}</td>
+			@end
+		</tr>
+	@end
+</table>
+@include 'footer.html'

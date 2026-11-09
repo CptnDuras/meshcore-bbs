@@ -312,6 +312,13 @@ usage: STATS
 summary: BBS stats
 example: STATS
 
+[command LINKS]
+names: LINKS
+topic: tools
+usage: LINKS
+summary: repeater links
+example: LINKS shows the weakest, strongest and slowest links between repeaters and when they were last measured.
+
 [command CHANNELS]
 names: CHANNELS, CHANDIR
 topic: tools
@@ -505,3 +512,11 @@ usage: EMAILSTATUS
 summary: email queue
 perm: sysop
 example: EMAILSTATUS shows emails queued, sent and failed, and the last few failures.
+
+[command LINKSCAN]
+names: LINKSCAN
+topic: staff
+usage: LINKSCAN
+summary: measure repeater links now
+perm: sysop
+example: LINKSCAN queues a scan of every heard repeater now (it also runs four times a day). LINKS shows the results.

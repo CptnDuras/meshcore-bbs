@@ -200,6 +200,25 @@ fn main() {
 	}
 	mc.subscribe(.channel_msg_recv, chan_cb)
 
+	// Link scan (linkscan_run.v): the repeaters seen side by side in heard packets are the links worth measuring; a scan sends traces along them
+	// four times a day, and when the sysop asks. Packets arrive on the radio's thread, so the graph only counts them; the loop below stores them.
+	mut graph := &PathGraph{}
+	mc.subscribe(.log_rx_data, fn [mut graph] (ev meshcore.Event) {
+		graph.record(ev.payload.data, time.now().unix())
+	})
+	mut tracer := &McTrace{
+		mc: mc
+	}
+	tracer.attach()
+	mut link_scan := &LinkScanRunner{
+		log: fn (s string) {
+			println(s)
+		}
+	}
+	engine.store.close_stale_link_scans(time.now().unix())
+	mut last_graph_flush := time.now().unix()
+	graph_flush_interval := i64(5 * 60)
+
 	// Contact auto-accept: when an unknown node advertises (NEW_CONTACT), add it
 	// to the radio's contact book automatically so replies route without manual
 	// approval. Also capture its name for the node-name map + log the event.
@@ -289,6 +308,13 @@ fn main() {
 			contact_refresh()
 			last_contact_sync = now
 		}
+
+		// Keep the repeater pairs heard in packet paths, and run the link scan if one is due or was asked for (one probe per turn of this loop).
+		if now - last_graph_flush >= graph_flush_interval {
+			engine.store.merge_path_pairs(graph.take()) or { eprintln('path pairs not saved: ${err}') }
+			last_graph_flush = now
+		}
+		link_scan.tick(now, tz_offset, mut engine.store, mut tracer)
 
 		// Periodic flood advert every 30 min so the mesh keeps a fresh route.
 		if now - last_advert >= advert_interval {
