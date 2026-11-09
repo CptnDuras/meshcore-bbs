@@ -226,6 +226,29 @@ fn test_route_tests_run_one_per_gap_and_keep_the_numbers() {
 	assert done.filter(it.ok == 0).len == 2
 }
 
+fn test_a_route_test_goes_out_and_comes_home_the_same_way() {
+	assert route_there_and_back(['a']) == ['a']
+	assert route_there_and_back(['a', 'b', 'c']) == ['a', 'b', 'c', 'b', 'a']
+	now := i64(1794787200 + 5 * 3600)
+	mut s := new_run_store()
+	mut radio := FakeRadio{
+		links: {
+			edge_key(link_self, 'aa1111111111'):      MeshLink{100, 9.0}
+			edge_key('aa1111111111', 'bb2222222222'): MeshLink{150, 4.0}
+		}
+	}
+	mut r := LinkScanRunner{
+		gap_secs: 0
+	}
+	s.add_route_test('aa1111111111,bb2222222222', 1, now)!
+	r.tick(now, 0, mut s, mut radio)
+	assert radio.sent == [[u8(0xaa), 0xbb, 0xaa]]
+	got := s.list_route_tests(1)[0]
+	assert got.ok == 1
+	assert got.rtt_ms == 100 + 150 + 150 + 100
+	assert got.snrs == '9.00,4.00,4.00'
+}
+
 fn test_a_dead_repeater_is_a_miss_not_a_failure_of_the_scan() {
 	now := i64(1794787200 + 5 * 3600)
 	mut s := new_run_store()

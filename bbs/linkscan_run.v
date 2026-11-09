@@ -174,6 +174,16 @@ pub fn (mut r LinkScanRunner) tick(now i64, tz_offset i64, mut store Store, mut 
 	r.next_at = now + r.gap_secs
 }
 
+// route_there_and_back adds the way home: a trace only returns to us if its path leads back, so [a, b, c] is sent as [a, b, c, b, a]. The
+// SNRs that come back are then those of every leg out and every leg home.
+fn route_there_and_back(route []string) []string {
+	mut path := route.clone()
+	for i := route.len - 2; i >= 0; i-- {
+		path << route[i]
+	}
+	return path
+}
+
 // run_route_test sends the oldest queued route test, one per gap, when no scan is running. A route that cannot be named counts as no answer.
 fn (mut r LinkScanRunner) run_route_test(now i64, mut store Store, mut radio TraceRadio) {
 	if now < r.next_at {
@@ -184,7 +194,7 @@ fn (mut r LinkScanRunner) run_route_test(now i64, mut store Store, mut radio Tra
 		store.finish_route_test(t.id, now, TraceReply{}, false) or {}
 		return
 	}
-	hashes := probe_hashes(t.route.split(','), t.hash_size) or {
+	hashes := probe_hashes(route_there_and_back(t.route.split(',')), t.hash_size) or {
 		store.finish_route_test(t.id, now, TraceReply{}, false) or {}
 		return
 	}
