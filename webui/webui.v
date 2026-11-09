@@ -52,13 +52,13 @@ struct Table {
 }
 
 struct Sched {
-	id       string
-	target   string
-	text     string
-	source   string
-	kind     string
-	whenv    string
-	enabled  bool
+	id      string
+	target  string
+	text    string
+	source  string
+	kind    string
+	whenv   string
+	enabled bool
 }
 
 struct UserRow {
@@ -268,10 +268,12 @@ fn scalar(mut db sqlite.DB, q string) string {
 }
 
 fn query_table(mut db sqlite.DB, headers []string, q string) Table {
-	rows := db.exec(q) or { return Table{
-		headers: headers
-		rows:    []
-	} }
+	rows := db.exec(q) or {
+		return Table{
+			headers: headers
+			rows:    []
+		}
+	}
 	mut out := []Row{}
 	for r in rows {
 		mut cells := []string{}

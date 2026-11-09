@@ -180,7 +180,7 @@ pub fn (mut s SqliteStore) migrate() ! {
 // add_column_if_missing adds a column to a table only when it does not already
 // exist, using PRAGMA table_info to check. No-op if the table is absent.
 fn (mut s SqliteStore) add_column_if_missing(table string, column string, decl string) ! {
-	info := s.db.exec("PRAGMA table_info(${table})") or { return }
+	info := s.db.exec('PRAGMA table_info(${table})') or { return }
 	for row in info {
 		// PRAGMA table_info columns: cid, name, type, notnull, dflt_value, pk
 		if row.vals.len > 1 && row.vals[1] == column {

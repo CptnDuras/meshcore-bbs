@@ -157,7 +157,11 @@ fn (mut e Engine) dispatch(mut sess Session, line string) string {
 			return fetch_weather()
 		}
 		'FORECAST', 'FC' {
-			days := if args.trim_space().len > 0 { args.trim_space().int() } else { forecast_default_days }
+			days := if args.trim_space().len > 0 {
+				args.trim_space().int()
+			} else {
+				forecast_default_days
+			}
 			return fetch_forecast(days)
 		}
 		'SPACEWX', 'SW', 'SPACE' {
@@ -316,11 +320,11 @@ fn (mut e Engine) handle_unknown(mut sess Session, cmd string, args string) stri
 }
 
 // known_commands is the set used for "did you mean" suggestions.
-const known_commands = ['HELP', 'MENU', 'WHO', 'WX', 'FORECAST', 'SPACEWX', 'NEWS', 'LIST',
-	'READ', 'POST', 'NEW', 'CLAIM', 'SETPASS', 'LOGIN', 'LOGOUT', 'KNOWN', 'CHANGE', 'GOTO',
-	'ENTER', 'MAIL', 'MAILBOX', 'CHECKMAIL', 'THREAD', 'ONELINER', 'BULLETIN', 'POLL', 'VOTE', 'RESULTS', 'PROFILE',
-	'SETBIO', 'CHANNELS', 'CHANADD', 'STATS', 'FORTUNE', 'ROLL', '8BALL', 'JOKE', 'CONFIG',
-	'TELL', 'CALLERS']
+const known_commands = ['HELP', 'MENU', 'WHO', 'WX', 'FORECAST', 'SPACEWX', 'NEWS', 'LIST', 'READ',
+	'POST', 'NEW', 'CLAIM', 'SETPASS', 'LOGIN', 'LOGOUT', 'KNOWN', 'CHANGE', 'GOTO', 'ENTER', 'MAIL',
+	'MAILBOX', 'CHECKMAIL', 'THREAD', 'ONELINER', 'BULLETIN', 'POLL', 'VOTE', 'RESULTS', 'PROFILE',
+	'SETBIO', 'CHANNELS', 'CHANADD', 'STATS', 'FORTUNE', 'ROLL', '8BALL', 'JOKE', 'CONFIG', 'TELL',
+	'CALLERS']
 
 // suggest_command returns the closest known command to `cmd` if one is within a
 // small edit distance (a simple typo helper), else none.

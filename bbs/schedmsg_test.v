@@ -89,12 +89,12 @@ fn test_outbound_mark_sent() {
 fn test_scheduled_add_and_list() {
 	mut s := sm_store()
 	s.add_scheduled(ScheduledMessage{
-		target_kind: target_chan
-		target:      '0'
-		text:        'daily wx'
-		sched_kind:  sched_daily
+		target_kind:  target_chan
+		target:       '0'
+		text:         'daily wx'
+		sched_kind:   sched_daily
 		daily_minute: 420
-		enabled:     true
+		enabled:      true
 	}) or { panic(err) }
 	list := s.list_scheduled(10)
 	assert list.len == 1
@@ -105,12 +105,12 @@ fn test_scheduled_add_and_list() {
 fn test_scheduled_enable_disable_delete() {
 	mut s := sm_store()
 	m := s.add_scheduled(ScheduledMessage{
-		target_kind: target_chan
-		target:      '0'
-		text:        'x'
-		sched_kind:  sched_interval
+		target_kind:   target_chan
+		target:        '0'
+		text:          'x'
+		sched_kind:    sched_interval
 		interval_secs: 60
-		enabled:     true
+		enabled:       true
 	}) or { panic(err) }
 	s.set_scheduled_enabled(m.id, false) or { panic(err) }
 	got := s.get_scheduled(m.id) or { panic('exists') }
