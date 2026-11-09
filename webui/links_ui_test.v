@@ -77,3 +77,11 @@ fn test_scans_query_runs() {
 	assert rows[0].vals[1] == 'schedule' && rows[0].vals[2] == 'done'
 	assert rows[0].vals[7] == '60 s'
 }
+
+fn test_page_connections_wait_for_a_locked_database() {
+	app := App{
+		db_path: ':memory:'
+	}
+	mut db := app.db() or { panic(err) }
+	assert (db.exec('PRAGMA busy_timeout') or { panic(err) })[0].vals[0] == '5000'
+}

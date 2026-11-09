@@ -340,8 +340,14 @@ pub fn (app &App) delete_macro(mut ctx Context) veb.Result {
 
 // --- helpers ---
 
+// The daemon writes to the same file all the time. Without a wait, a write from a page that meets its lock fails at once, and the pages ignore
+// the error, so a button press would do nothing. With one, SQLite retries for a few seconds first.
+const db_busy_timeout_ms = 5000
+
 fn (app &App) db() !sqlite.DB {
-	return sqlite.connect(app.db_path)!
+	mut db := sqlite.connect(app.db_path)!
+	db.exec('PRAGMA busy_timeout = ${db_busy_timeout_ms}')!
+	return db
 }
 
 fn scalar(mut db sqlite.DB, q string) string {
