@@ -66,15 +66,52 @@ mut:
 
 pub fn (mut g PathGraph) record(raw []u8, now i64) {
 	hp := heard_path(raw) or { return }
-	if hp.names.len < 2 {
+	g.note(hp.names, now)
+}
+
+// record_contact takes the path the radio uses to reach a contact (from its contact book): the repeaters in order, so each neighbouring pair is
+// a link the radio found worth using. A repeater contact is also the end of its own path, so the last repeater on it is paired with the contact.
+pub fn (mut g PathGraph) record_contact(path_len u8, path []u8, id string, is_repeater bool, now i64) {
+	mut names := path_names(path_len, path)
+	if names.len == 0 {
+		return
+	}
+	size := int(path_len >> 6) + 1
+	if is_repeater && id.len >= size * 2 {
+		names << id[..size * 2]
+	}
+	g.note(names, now)
+}
+
+// path_names cuts a path (path_len says how many names and how long each is, as in a packet) into hex names. Empty for no path (0xFF) or a
+// path that does not fit its length.
+pub fn path_names(path_len u8, path []u8) []string {
+	if path_len == 0xFF {
+		return []string{}
+	}
+	hops := int(path_len & 63)
+	size := int(path_len >> 6) + 1
+	if size == 4 || hops * size != path.len {
+		return []string{}
+	}
+	mut names := []string{}
+	for i in 0 .. hops {
+		names << path[i * size..(i + 1) * size].hex()
+	}
+	return names
+}
+
+// note counts each pair of neighbours in a list of names.
+fn (mut g PathGraph) note(names []string, now i64) {
+	if names.len < 2 {
 		return
 	}
 	g.mu.lock()
 	defer {
 		g.mu.unlock()
 	}
-	for i in 0 .. hp.names.len - 1 {
-		x, y := hp.names[i], hp.names[i + 1]
+	for i in 0 .. names.len - 1 {
+		x, y := names[i], names[i + 1]
 		if x == y {
 			continue
 		}

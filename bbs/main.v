@@ -211,8 +211,11 @@ fn main() {
 	}
 	tracer.attach()
 	mut link_scan := &LinkScanRunner{
-		log: fn (s string) {
+		log:          fn (s string) {
 			println(s)
+		}
+		before_start: fn [mut engine, mut graph] () {
+			engine.store.merge_path_pairs(graph.take()) or { eprintln('path pairs not saved: ${err}') }
 		}
 	}
 	engine.store.close_stale_link_scans(time.now().unix())
@@ -242,15 +245,18 @@ fn main() {
 
 	// contact_refresh syncs the radio's contact list into node_names. Called at
 	// startup and every 15 minutes from the loop below.
-	contact_refresh := fn [mut engine, mut mc, mut observed] () {
+	contact_refresh := fn [mut engine, mut mc, mut observed, mut graph] () {
 		contacts := mc.get_contacts(0, 8000) or {
 			eprintln('contact refresh failed: ${err}')
 			return
 		}
 		mut n := 0
+		now := time.now().unix()
 		for c in contacts {
 			// the planner report names every repeater and room the radio knows, not only those that advertised during a window
 			observed.seed(c.public_key, c.adv_name, contact_role(c.contact_type), c.adv_lat, c.adv_lon, i64(c.last_advert))
+			// the path the radio uses to reach a contact names repeaters that hear each other: candidates for the link scan
+			graph.record_contact(c.path_len, c.out_path, c.pubkey_prefix, c.contact_type == contact_type_repeater, now)
 			if c.pubkey_prefix.len > 0 && c.adv_name.len > 0 {
 				engine.save_node_name(c.pubkey_prefix, c.adv_name, int(c.contact_type),
 					i64(c.last_advert))

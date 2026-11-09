@@ -82,6 +82,8 @@ pub struct LinkScanRunner {
 pub mut:
 	gap_secs int         = scan_gap_secs
 	log      fn (string) = fn (s string) {}
+	// before_start runs as a scan begins, before it reads the pairs of repeaters seen side by side (the daemon saves what it has collected here)
+	before_start fn () = fn () {}
 mut:
 	running  bool
 	scan_id  int
@@ -139,6 +141,7 @@ pub fn (mut r LinkScanRunner) tick(now i64, tz_offset i64, mut store Store, mut 
 }
 
 fn (mut r LinkScanRunner) begin(id int, now i64, mut store Store) {
+	r.before_start()
 	r.repeater = repeaters_from_names(store.list_node_names(8000), now)
 	observed := candidate_edges(store.list_path_pairs(), r.repeater)
 	r.scanner = new_scanner(r.repeater, observed, scan_max_probes)

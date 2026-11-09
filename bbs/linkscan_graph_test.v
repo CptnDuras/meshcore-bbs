@@ -96,3 +96,44 @@ fn test_candidate_edges_no_duplicates() {
 	edges := candidate_edges([SeenPair{'aa', 'bb', 1, 1}, SeenPair{'aa11', 'bb22', 1, 1}], reps)
 	assert edges.len == 1
 }
+
+fn test_path_names_reads_hops_of_any_valid_size() {
+	assert path_names(2, [u8(0x11), 0x22]) == ['11', '22']
+	assert path_names(2 | (1 << 6), [u8(0x11), 0x22, 0x33, 0x44]) == ['1122', '3344']
+	assert path_names(0, []u8{}) == []string{}
+}
+
+fn test_path_names_ignores_no_path_and_mismatches() {
+	assert path_names(0xFF, [u8(1), 2]) == []string{} // no path known
+	assert path_names(3, [u8(1), 2]) == []string{} // says 3 hops, has 2 bytes
+	assert path_names(1 | (3 << 6), [u8(1), 2, 3, 4]) == []string{} // 4 byte names do not exist
+}
+
+fn test_a_contact_path_gives_the_links_along_it() {
+	mut g := PathGraph{}
+	// the radio reaches the repeater cc33... through aa then bb: aa-bb is a link, and bb-cc since cc is a repeater too
+	g.record_contact(2, [u8(0xaa), 0xbb], 'cc3333333333', true, 100)
+	mut pairs := g.take()
+	pairs.sort(a.a < b.a)
+	assert pairs == [SeenPair{'aa', 'bb', 1, 100}, SeenPair{'bb', 'cc', 1, 100}]
+}
+
+fn test_a_contact_that_is_not_a_repeater_is_not_a_link_end() {
+	mut g := PathGraph{}
+	g.record_contact(2, [u8(0xaa), 0xbb], 'cc3333333333', false, 100)
+	assert g.take() == [SeenPair{'aa', 'bb', 1, 100}]
+}
+
+fn test_a_direct_contact_or_one_with_no_path_adds_nothing() {
+	mut g := PathGraph{}
+	g.record_contact(0, []u8{}, 'cc3333333333', true, 100) // direct: its link to this node is probed anyway
+	g.record_contact(0xFF, []u8{}, 'dd4444444444', true, 100)
+	g.record_contact(1, [u8(0xaa)], 'cc3333333333', false, 100) // one repeater and a client: no pair
+	assert g.take().len == 0
+}
+
+fn test_contact_path_with_wide_names_pairs_with_the_wide_start_of_the_key() {
+	mut g := PathGraph{}
+	g.record_contact(1 | (1 << 6), [u8(0xaa), 0xa1], 'cc3333333333', true, 100)
+	assert g.take() == [SeenPair{'aaa1', 'cc33', 1, 100}]
+}
