@@ -87,26 +87,16 @@ fn test_scan_due_uses_local_time() {
 	assert scan_due(day + 10 * 3600, off, day + 8 * 3600)
 }
 
-fn test_repeaters_from_names_keeps_only_recent_repeaters() {
+fn test_repeaters_from_names_keeps_every_repeater_whatever_its_advert_time() {
 	now := i64(2_000_000_000)
 	names := [contact('AA1111111111', 'Alpha', 2, now - 10), // upper case is lower-cased
 		contact('bb2222222222', 'Chat', 1, now - 10), // a chat client
 		contact('cc3333333333', 'Room', 3, now - 10), // a room server
-		contact('dd4444444444', 'Old', 2, now - 15 * 24 * 3600), // gone quiet
+		contact('dd4444444444', 'Old', 2, now - 500 * 24 * 3600), // its clock may simply be wrong
 		contact('ee55', 'Short', 2, now - 10), // not a full prefix
-		contact('ff6666666666', 'NoTime', 2, 0)] // advert time unknown: kept
-	reps := repeaters_from_names(names, [], now)
-	assert reps.map(it.id) == ['aa1111111111', 'ff6666666666']
-}
-
-fn test_a_repeater_with_an_old_advert_is_kept_if_a_recent_path_names_it() {
-	now := i64(2_000_000_000)
-	names := [contact('dabb6ece78ed', 'dabb', 2, now - 500 * 24 * 3600),
-		contact('dd4444444444', 'Old', 2, now - 500 * 24 * 3600)]
-	heard := [SeenPair{'19e0', 'dabb', 4, now - 60}, SeenPair{'dd', 'ee', 9, now - 60},
-		SeenPair{'dd44', 'ee', 3, now - 30 * 24 * 3600}]
-	// one byte names are too vague to prove life; a 2 byte name in a stale path does not count either
-	assert repeaters_from_names(names, heard, now).map(it.id) == ['dabb6ece78ed']
+		contact('ff6666666666', 'NoTime', 2, 0)] // advert time unknown
+	reps := repeaters_from_names(names)
+	assert reps.map(it.id) == ['aa1111111111', 'dd4444444444', 'ff6666666666']
 }
 
 fn test_probe_hashes_takes_the_first_bytes_of_each_id() {

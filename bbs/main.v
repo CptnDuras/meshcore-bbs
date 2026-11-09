@@ -59,6 +59,7 @@ fn main() {
 		exit(1)
 	}
 	println('BBS live as ${si.payload.name} @ ${si.payload.radio_freq} MHz. Waiting for callers...\n')
+	println(ensure_path_hash_mode(mut mc))
 
 	// --- optional MQTT observer (off unless enabled in the web UI) ---
 	// Identity comes from the radio; model/firmware are best-effort.

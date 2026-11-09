@@ -11,9 +11,6 @@ const scan_slots = [3 * 60, 9 * 60, 15 * 60, 21 * 60]
 // A slot only starts a scan within this long after it: a daemon that was down through a slot does not run it hours late.
 const scan_grace_secs = 1800
 
-// A repeater counts as heard if its advert is no older than this.
-const heard_max_age_secs = i64(14 * 24 * 3600)
-
 // Most probes in one scan, and the pause between probes. A probe is a few short packets, but the airtime is shared with everyone on the mesh.
 const scan_max_probes = 600
 const scan_gap_secs = 4
@@ -57,35 +54,13 @@ pub fn scan_due(now i64, tz_offset i64, last_requested i64) bool {
 	return false
 }
 
-// A name of at least this many hex digits (2 bytes) in a recent path points at one repeater well enough to show it is alive.
-const min_alive_name_len = 4
-
-// alive_in_paths says whether a recent path carried a name that starts this id: a repeater that forwards traffic is alive even if its advert is old.
-fn alive_in_paths(id string, heard []SeenPair, now i64) bool {
-	for p in heard {
-		if now - p.last > heard_max_age_secs {
-			continue
-		}
-		for name in [p.a, p.b] {
-			if name.len >= min_alive_name_len && id.starts_with(name) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// repeaters_from_names picks the repeaters out of the contact names: type repeater, with a full 6 byte key, advertised recently enough or seen
-// forwarding in a recent path.
-pub fn repeaters_from_names(names []NodeName, heard []SeenPair, now i64) []Repeater {
+// repeaters_from_names picks the repeaters out of the contact names: type repeater, with a full 6 byte key. How long ago one advertised does not
+// matter, because the clocks of many repeaters are far off, so their advert times say nothing about whether they are still there.
+pub fn repeaters_from_names(names []NodeName) []Repeater {
 	mut out := []Repeater{}
 	for n in names {
 		id := n.pubkey_prefix.to_lower()
 		if n.contact_type != contact_type_repeater || id.len != 12 {
-			continue
-		}
-		if n.last_advert > 0 && now - n.last_advert > heard_max_age_secs
-			&& !alive_in_paths(id, heard, now) {
 			continue
 		}
 		out << Repeater{
@@ -225,7 +200,7 @@ fn (mut r LinkScanRunner) begin(id int, now i64, mut store Store, mut radio Trac
 	r.before_start()
 	r.direct_pass(now, mut store, mut radio)
 	pairs := store.list_path_pairs()
-	r.repeater = repeaters_from_names(store.list_node_names(8000), pairs, now)
+	r.repeater = repeaters_from_names(store.list_node_names(8000))
 	observed := candidate_edges(pairs, r.repeater)
 	r.scanner = new_scanner(r.repeater, observed, scan_max_probes)
 	r.scan_id = id
