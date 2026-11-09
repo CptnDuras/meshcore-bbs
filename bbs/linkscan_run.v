@@ -136,7 +136,10 @@ pub fn (mut r LinkScanRunner) tick(now i64, tz_offset i64, mut store Store, mut 
 				store.request_link_scan('schedule', now) or { return }
 			}
 		}
-		pending := store.pending_link_scan() or { return }
+		pending := store.pending_link_scan() or {
+			r.run_route_test(now, mut store, mut radio)
+			return
+		}
 		r.begin(pending.id, now, mut store, mut radio)
 		return
 	}
@@ -168,6 +171,29 @@ pub fn (mut r LinkScanRunner) tick(now i64, tz_offset i64, mut store Store, mut 
 	}
 	r.note(p, res, now, mut store)
 	r.scanner.record(p, res)
+	r.next_at = now + r.gap_secs
+}
+
+// run_route_test sends the oldest queued route test, one per gap, when no scan is running. A route that cannot be named counts as no answer.
+fn (mut r LinkScanRunner) run_route_test(now i64, mut store Store, mut radio TraceRadio) {
+	if now < r.next_at {
+		return
+	}
+	t := store.pending_route_test() or { return }
+	if t.hash_size !in [1, 2, 4] {
+		store.finish_route_test(t.id, now, TraceReply{}, false) or {}
+		return
+	}
+	hashes := probe_hashes(t.route.split(','), t.hash_size) or {
+		store.finish_route_test(t.id, now, TraceReply{}, false) or {}
+		return
+	}
+	reply := radio.trace(t.hash_size, hashes) or {
+		TraceReply{
+			rtt_ms: -1
+		}
+	}
+	store.finish_route_test(t.id, now, reply, reply.rtt_ms >= 0) or {}
 	r.next_at = now + r.gap_secs
 }
 

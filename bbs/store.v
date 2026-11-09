@@ -101,6 +101,10 @@ mut:
 	finish_link_scan(id int, now i64, sum Summary) !
 	recent_link_scans(limit int) []LinkScan
 	close_stale_link_scans(now i64)
+	add_route_test(route string, hash_size int, now i64) !
+	pending_route_test() ?RouteTest
+	finish_route_test(id int, now i64, reply TraceReply, ok bool) !
+	list_route_tests(limit int) []RouteTest
 	traffic_nodes_since(since i64) int
 	// outbound message queue (daemon drains; UI/scheduler enqueue)
 	enqueue_outbound(target_kind string, target string, text string) !
@@ -177,6 +181,7 @@ pub fn (mut s SqliteStore) migrate() ! {
 		create table LinkHop
 		create table LinkEdge
 		create table LinkScan
+		create table RouteTest
 		create table PathPair
 		create table OutboundMessage
 		create table ScheduledMessage

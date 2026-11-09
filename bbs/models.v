@@ -341,6 +341,24 @@ pub mut:
 	replies   int
 }
 
+// RouteTest is one trace along a chosen route, queued by hand (SQL or a tool) so real routes can be compared. route is repeater ids (12 hex digits
+// each) joined by commas, out from this node; the trace goes out along them and back the same way. state is requested or done; snrs holds the SNR in
+// dB of each hop outward joined by commas, final_snr the last leg back to us.
+@[table: 'route_tests']
+pub struct RouteTest {
+pub mut:
+	id        int @[primary; sql: serial]
+	requested i64
+	finished  i64
+	route     string
+	hash_size int
+	state     string
+	ok        int // 1 when the trace came back
+	rtt_ms    int
+	snrs      string
+	final_snr f64
+}
+
 // PathPair is two repeater names seen side by side in the path of a heard packet, a before b, and how many times.
 @[table: 'path_pairs']
 pub struct PathPair {

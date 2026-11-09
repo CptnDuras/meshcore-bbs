@@ -196,6 +196,36 @@ fn test_a_direct_discover_records_the_snr_both_ways() {
 	assert hops.filter(it.from_id == link_self && it.to_id == 'aa1111111111')[0].snr_last == -2.0
 }
 
+fn test_route_tests_run_one_per_gap_and_keep_the_numbers() {
+	now := i64(1794787200 + 5 * 3600)
+	mut s := new_run_store()
+	mut radio := FakeRadio{
+		links: {
+			edge_key(link_self, 'aa1111111111'): MeshLink{100, 9.0}
+		}
+	}
+	mut r := LinkScanRunner{
+		gap_secs: 10
+	}
+	s.add_route_test('aa1111111111', 1, now)!
+	s.add_route_test('bb2222222222', 1, now)! // nobody answers there
+	s.add_route_test('aa1111111111', 3, now)! // not a hash size a trace can use: counts as no answer
+	r.tick(now, 0, mut s, mut radio)
+	r.tick(now + 5, 0, mut s, mut radio) // too soon for the next one
+	assert radio.sent.len == 1
+	r.tick(now + 10, 0, mut s, mut radio)
+	assert radio.sent.len == 2
+	r.tick(now + 20, 0, mut s, mut radio)
+	assert radio.sent.len == 2 // the third never reached the radio
+	done := s.list_route_tests(10).filter(it.state == 'done')
+	assert done.len == 3
+	good := done.filter(it.route == 'aa1111111111' && it.hash_size == 1 && it.ok == 1)
+	assert good.len == 1
+	assert good[0].rtt_ms == 200 // out 100 and back 100
+	assert good[0].snrs == '9.00'
+	assert done.filter(it.ok == 0).len == 2
+}
+
 fn test_a_dead_repeater_is_a_miss_not_a_failure_of_the_scan() {
 	now := i64(1794787200 + 5 * 3600)
 	mut s := new_run_store()
