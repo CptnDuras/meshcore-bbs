@@ -88,6 +88,19 @@ mut:
 	log_traffic(kind string, pubkey_prefix string, snr f64, path_len int) !
 	count_traffic() int
 	recent_traffic(limit int) []MeshTraffic
+	// link scan (trace probes between repeaters)
+	record_link_hop(from_id string, to_id string, snr f64, ts i64) !
+	record_link_edge(x string, y string, ok bool, lat_ms int, depth int, ts i64) !
+	list_link_hops() []LinkHop
+	list_link_edges() []LinkEdge
+	merge_path_pairs(pairs []SeenPair) !
+	list_path_pairs() []SeenPair
+	request_link_scan(source string, now i64) !int
+	pending_link_scan() ?LinkScan
+	set_link_scan_running(id int, now i64) !
+	finish_link_scan(id int, now i64, sum Summary) !
+	recent_link_scans(limit int) []LinkScan
+	close_stale_link_scans(now i64)
 	traffic_nodes_since(since i64) int
 	// outbound message queue (daemon drains; UI/scheduler enqueue)
 	enqueue_outbound(target_kind string, target string, text string) !
@@ -161,6 +174,10 @@ pub fn (mut s SqliteStore) migrate() ! {
 		create table Channel
 		create table NodeName
 		create table MeshTraffic
+		create table LinkHop
+		create table LinkEdge
+		create table LinkScan
+		create table PathPair
 		create table OutboundMessage
 		create table ScheduledMessage
 		create table SentHeadline

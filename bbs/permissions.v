@@ -42,7 +42,7 @@ pub fn min_level(action string) Perm {
 		'move_message', 'ban_user', 'twit_user' {
 			Perm.aide
 		}
-		'sysop_config', 'bulletin_post', 'broadcast' { Perm.sysop }
+		'sysop_config', 'bulletin_post', 'broadcast', 'linkscan' { Perm.sysop }
 		else { Perm.sysop } // unknown actions default to most-restrictive
 	}
 }

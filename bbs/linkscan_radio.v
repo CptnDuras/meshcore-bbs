@@ -1,0 +1,90 @@
+module main
+
+import meshcore
+import time
+
+// The real TraceRadio: sends the trace through the radio and waits for the push that carries the same tag.
+// The radio hands answers to a callback on the reader thread; they come over a channel to the one waiting here.
+
+const trace_wait_min_ms = 3000
+const trace_wait_max_ms = 30000
+const trace_wait_margin_ms = 1500
+
+struct TraceArrival {
+	at_ms i64
+	ev    meshcore.Event
+}
+
+pub struct McTrace {
+pub mut:
+	mc       &meshcore.MeshCore
+	arrivals chan TraceArrival = chan TraceArrival{cap: 16}
+mut:
+	tag u32
+}
+
+// attach starts listening for trace answers. Call once after the radio is open.
+pub fn (mut t McTrace) attach() {
+	arrivals := t.arrivals
+	t.mc.subscribe(.trace_data, fn [arrivals] (ev meshcore.Event) {
+		a := TraceArrival{
+			at_ms: time.ticks()
+			ev:    ev
+		}
+		select {
+			arrivals <- a {
+			}
+			else {
+			} // nobody is waiting and the channel is full: the answer is stale anyway
+		}
+	})
+	t.tag = u32(time.now().unix_nano())
+}
+
+// wait_ms is how long to wait for an answer: what the radio estimated for the trip, with a margin, within sane bounds.
+pub fn trace_wait_ms(suggested_ms u32) int {
+	w := if suggested_ms > u32(trace_wait_max_ms) { trace_wait_max_ms } else { int(suggested_ms) }
+	t := w + trace_wait_margin_ms
+	return if t < trace_wait_min_ms {
+		trace_wait_min_ms
+	} else if t > trace_wait_max_ms {
+		trace_wait_max_ms
+	} else {
+		t
+	}
+}
+
+pub fn (mut t McTrace) trace(hash_size int, hashes []u8) !TraceReply {
+	t.tag++
+	tag := t.tag
+	for { // forget answers to earlier probes that arrived too late
+		select {
+			_ := <-t.arrivals {
+			}
+			else {
+				break
+			}
+		}
+	}
+	t0 := time.ticks()
+	sent := t.mc.send_trace_path(tag, hash_size, hashes)!
+	deadline := t0 + trace_wait_ms(sent.payload.suggested_timeout)
+	for time.ticks() < deadline {
+		select {
+			a := <-t.arrivals {
+				p := a.ev.payload
+				if p.trace_tag != tag || p.trace_hashes != hashes {
+					continue
+				}
+				return TraceReply{
+					rtt_ms:    int(a.at_ms - t0)
+					snrs:      p.trace_snrs
+					final_snr: p.snr
+				}
+			}
+			50 * time.millisecond {
+			}
+		}
+	}
+	return error('no answer to trace ${tag}')
+}

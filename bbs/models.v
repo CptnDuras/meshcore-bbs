@@ -288,3 +288,66 @@ pub mut:
 	enabled       bool
 	created       i64
 }
+
+// LinkHop is the SNR one node heard another with, over every trace that crossed that hop in that direction. from_id/to_id are the first 6 bytes of
+// the public key in hex, or 'self' for this node.
+@[table: 'link_hops']
+pub struct LinkHop {
+pub mut:
+	id       int @[primary; sql: serial]
+	from_id  string
+	to_id    string
+	n        int
+	snr_sum  f64
+	snr_min  f64
+	snr_max  f64
+	snr_last f64
+	last_ts  i64
+}
+
+// LinkEdge is one link between two nodes (a_id < b_id): how often a trace was tried over it, how often it was answered, and the one-way delay the
+// answered traces worked out to. depth is the fewest hops from this node to the link's far end seen so far.
+@[table: 'link_edges']
+pub struct LinkEdge {
+pub mut:
+	id          int @[primary; sql: serial]
+	a_id        string
+	b_id        string
+	tries       int
+	oks         int
+	lat_n       int
+	lat_sum_ms  i64
+	lat_min_ms  int
+	lat_max_ms  int
+	lat_last_ms int
+	depth       int
+	last_ts     i64
+	last_ok_ts  i64
+}
+
+// LinkScan is one run of the link scan, or a request for one: state is requested, running or done.
+@[table: 'link_scans']
+pub struct LinkScan {
+pub mut:
+	id        int @[primary; sql: serial]
+	requested i64
+	started   i64
+	finished  i64
+	source    string // schedule or sysop
+	state     string
+	repeaters int
+	reached   int
+	probes    int
+	replies   int
+}
+
+// PathPair is two repeater names seen side by side in the path of a heard packet, a before b, and how many times.
+@[table: 'path_pairs']
+pub struct PathPair {
+pub mut:
+	id   int @[primary; sql: serial]
+	a    string
+	b    string
+	n    int
+	last i64
+}

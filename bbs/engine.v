@@ -191,6 +191,12 @@ fn (mut e Engine) dispatch(mut sess Session, line string) string {
 		'STATS' {
 			return e.stats()
 		}
+		'LINKS' {
+			return e.links()
+		}
+		'LINKSCAN' {
+			return e.link_scan_cmd(mut sess)
+		}
 		'LIST', 'L' {
 			return e.list_boards()
 		}
@@ -324,7 +330,7 @@ const known_commands = ['HELP', 'MENU', 'WHO', 'WX', 'FORECAST', 'SPACEWX', 'NEW
 	'POST', 'NEW', 'CLAIM', 'SETPASS', 'LOGIN', 'LOGOUT', 'KNOWN', 'CHANGE', 'GOTO', 'ENTER', 'MAIL',
 	'MAILBOX', 'CHECKMAIL', 'THREAD', 'ONELINER', 'BULLETIN', 'POLL', 'VOTE', 'RESULTS', 'PROFILE',
 	'SETBIO', 'CHANNELS', 'CHANADD', 'STATS', 'FORTUNE', 'ROLL', '8BALL', 'JOKE', 'CONFIG', 'TELL',
-	'CALLERS']
+	'CALLERS', 'LINKS', 'LINKSCAN']
 
 // suggest_command returns the closest known command to `cmd` if one is within a
 // small edit distance (a simple typo helper), else none.
@@ -427,7 +433,7 @@ fn (mut e Engine) help(sess Session) string {
 	b += 'POLL [id]  VOTE <id> <n>  RESULTS <id>\n'
 	b += 'FORTUNE  ROLL <NdM>  8BALL <q>  JOKE\n'
 	b += 'CHANNELS (directory)\n'
-	b += 'STATS\n'
+	b += 'STATS  LINKS (repeater link quality)\n'
 	b += 'E [subj] enter msg  MAIL <u>  MAILBOX  CHECKMAIL  THREAD <u>  TELL <u> <msg>  SETBIO <text>\n'
 	b += 'POLL NEW <q>|<opt>|<opt>...  POLLCLOSE <id>  CHANADD <name>|<desc>|<info>\n'
 	b += 'Account: CLAIM <handle> <pass>  SETPASS <pass>  LOGIN <handle> <pass>  Q logout\n'
@@ -437,7 +443,7 @@ fn (mut e Engine) help(sess Session) string {
 		b += 'AIDE: VERIFY <u>  PROMOTE/DEMOTE/TWIT <u>  BAN/UNBAN <u>  DELETE <id>\n'
 	}
 	if perm_from_int(u.perm) == Perm.sysop {
-		b += 'SYSOP: BULLET <title>|<body>\n'
+		b += 'SYSOP: BULLET <title>|<body>  LINKSCAN\n'
 	}
 	return b
 }
