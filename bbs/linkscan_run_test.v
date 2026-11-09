@@ -11,6 +11,8 @@ const fake_ids = ['aa1111111111', 'bb2222222222', 'cc3333333333']
 
 struct FakeRadio {
 	links map[string]MeshLink
+	// who answers a direct discover
+	neighbours []Neighbour
 mut:
 	sent [][]u8
 }
@@ -35,6 +37,10 @@ fn (mut f FakeRadio) trace(hash_size int, hashes []u8) !TraceReply {
 		snrs:      snrs
 		final_snr: l.snr
 	}
+}
+
+fn (mut f FakeRadio) discover() ![]Neighbour {
+	return f.neighbours
 }
 
 fn contact(id string, name string, kind int, advert i64) NodeName {
@@ -171,6 +177,23 @@ fn test_a_requested_scan_measures_and_records_everything() {
 	hops := s.list_link_hops()
 	assert hops.filter(it.from_id == 'bb2222222222' && it.to_id == 'cc3333333333')[0].snr_last == -3.0
 	assert hops.filter(it.from_id == 'cc3333333333' && it.to_id == 'bb2222222222')[0].snr_last == -3.0
+}
+
+fn test_a_direct_discover_records_the_snr_both_ways() {
+	now := i64(1794787200 + 5 * 3600)
+	mut s := new_run_store()
+	seed_names(mut s, now)
+	mut radio := FakeRadio{
+		neighbours: [Neighbour{'aa1111111111', 6.5, -2.0}]
+	}
+	mut r := LinkScanRunner{
+		gap_secs: 0
+	}
+	s.request_link_scan('sysop', now)!
+	run_to_end(mut r, mut s, mut radio, now)
+	hops := s.list_link_hops()
+	assert hops.filter(it.from_id == 'aa1111111111' && it.to_id == link_self)[0].snr_last == 6.5
+	assert hops.filter(it.from_id == link_self && it.to_id == 'aa1111111111')[0].snr_last == -2.0
 }
 
 fn test_a_dead_repeater_is_a_miss_not_a_failure_of_the_scan() {

@@ -28,9 +28,20 @@ pub:
 	final_snr f64
 }
 
+// Neighbour is a repeater that answered a zero-hop DISCOVER request: it hears this node directly. heard_snr is what this radio heard its reply
+// with, their_snr what it heard the request with, so the two are the SNR of the link in each direction with no repeater in between.
+pub struct Neighbour {
+pub:
+	id        string // first 6 bytes of its key, lower-case hex
+	heard_snr f64
+	their_snr f64
+}
+
 pub interface TraceRadio {
 mut:
 	trace(hash_size int, hashes []u8) !TraceReply
+	// discover asks every repeater in direct range to answer, and returns whoever did within a few seconds
+	discover() ![]Neighbour
 }
 
 // scan_due says whether one of the four daily slots has just come and no scan has been asked for since it. tz_offset is local time minus UTC in seconds.
@@ -126,7 +137,7 @@ pub fn (mut r LinkScanRunner) tick(now i64, tz_offset i64, mut store Store, mut 
 			}
 		}
 		pending := store.pending_link_scan() or { return }
-		r.begin(pending.id, now, mut store)
+		r.begin(pending.id, now, mut store, mut radio)
 		return
 	}
 	if now < r.next_at {
@@ -160,8 +171,23 @@ pub fn (mut r LinkScanRunner) tick(now i64, tz_offset i64, mut store Store, mut 
 	r.next_at = now + r.gap_secs
 }
 
-fn (mut r LinkScanRunner) begin(id int, now i64, mut store Store) {
+// direct_pass asks the repeaters in direct range to answer and records the SNR both ways of each of those links. No repeater is between us, so
+// these readings are plain measurements, not something worked out from a trace.
+fn (r &LinkScanRunner) direct_pass(now i64, mut store Store, mut radio TraceRadio) {
+	heard := radio.discover() or {
+		r.log('[links] direct discover failed: ${err}')
+		return
+	}
+	for n in heard {
+		store.record_link_hop(n.id, link_self, n.heard_snr, now) or {}
+		store.record_link_hop(link_self, n.id, n.their_snr, now) or {}
+	}
+	r.log('[links] ${heard.len} repeater(s) answered a direct discover')
+}
+
+fn (mut r LinkScanRunner) begin(id int, now i64, mut store Store, mut radio TraceRadio) {
 	r.before_start()
+	r.direct_pass(now, mut store, mut radio)
 	pairs := store.list_path_pairs()
 	r.repeater = repeaters_from_names(store.list_node_names(8000), pairs, now)
 	observed := candidate_edges(pairs, r.repeater)
