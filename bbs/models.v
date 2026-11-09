@@ -416,19 +416,22 @@ pub mut:
 	broker  string // broker name, '' when not about one broker
 	summary string
 	detail  string // packets: the exact JSON published
+}
 
-	// LinkHop is the SNR one node heard another with, over every trace that crossed that hop in that direction. from_id/to_id are the first 6 bytes of
-	// the public key in hex, or 'self' for this node.
-	pub     struct LinkHop @[table: 'link_hops']
-	id             int @[primary; sql: serial]
-	from_id        string
-	to_id          string
-	n              int
-	snr_sum        f64
-	snr_min        f64
-	snr_max        f64
-	snr_last       f64
-	last_ts        i64
+// LinkHop is the SNR one node heard another with, over every trace that crossed that hop in that direction. from_id/to_id are the first 6 bytes of
+// the public key in hex, or 'self' for this node.
+@[table: 'link_hops']
+pub struct LinkHop {
+pub mut:
+	id       int @[primary; sql: serial]
+	from_id  string
+	to_id    string
+	n        int
+	snr_sum  f64
+	snr_min  f64
+	snr_max  f64
+	snr_last f64
+	last_ts  i64
 }
 
 // LinkEdge is one link between two nodes (a_id < b_id): how often a trace was tried over it, how often it was answered, and the one-way delay the

@@ -314,7 +314,7 @@ example: STATS
 
 [command LINKS]
 names: LINKS
-topic: tools
+topic: staff
 usage: LINKS
 summary: repeater links
 example: LINKS shows the weakest, strongest and slowest links between repeaters and when they were last measured.
