@@ -19,16 +19,17 @@ fn (mut e Engine) links() string {
 		if id == link_self {
 			return 'BBS'
 		}
-		return names[id] or { id[..if id.len < 6 { id.len } else { 6 }] }
+		short := if id.len < 6 { id.len } else { 6 }
+		return names[id] or { id[..short] }
 	}
 	edges := e.store.list_link_edges()
 	rows := link_rows(edges, e.store.list_link_hops(), name_of)
-	last := e.store.recent_link_scans(1)
-	return links_summary(rows, edges.filter(it.oks == 0).len, if last.len > 0 {
-		?LinkScan(last[0])
-	} else {
-		?LinkScan(none)
-	}, time.now().unix())
+	scans := e.store.recent_link_scans(1)
+	mut last := ?LinkScan(none)
+	if scans.len > 0 {
+		last = scans[0]
+	}
+	return links_summary(rows, edges.filter(it.oks == 0).len, last, time.now().unix())
 }
 
 fn (mut e Engine) link_scan_cmd(mut sess Session) string {

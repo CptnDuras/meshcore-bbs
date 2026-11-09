@@ -64,6 +64,12 @@ pub fn link_rows(edges []LinkEdge, hops []LinkHop, name_of fn (string) string) [
 	return out
 }
 
+// top_rows is the first few rows (the older V on the node cannot type an if inside a slice, so the length is worked out here).
+fn top_rows(rows []LinkRow) []LinkRow {
+	n := if rows.len < summary_top { rows.len } else { summary_top }
+	return rows[..n]
+}
+
 fn snr_text(v f64) string {
 	return '${v:.1f}'
 }
@@ -103,15 +109,11 @@ pub fn links_summary(rows []LinkRow, unanswered int, last ?LinkScan, now i64) st
 		by_snr.sort(a.weakest() < b.weakest())
 		if by_snr.len > 0 {
 			b += 'Weakest:\n'
-			for r in by_snr[..if by_snr.len < summary_top { by_snr.len } else { summary_top }] {
+			for r in top_rows(by_snr) {
 				b += ' ${link_line(r)}\n'
 			}
 			b += 'Strongest:\n'
-			for r in by_snr.reverse()[..if by_snr.len < summary_top {
-				by_snr.len
-			} else {
-				summary_top
-			}] {
+			for r in top_rows(by_snr.reverse()) {
 				b += ' ${link_line(r)}\n'
 			}
 		}
@@ -119,7 +121,7 @@ pub fn links_summary(rows []LinkRow, unanswered int, last ?LinkScan, now i64) st
 		by_lat.sort(a.lat_ms > b.lat_ms)
 		if by_lat.len > 0 {
 			b += 'Slowest:\n'
-			for r in by_lat[..if by_lat.len < summary_top { by_lat.len } else { summary_top }] {
+			for r in top_rows(by_lat) {
 				b += ' ${link_line(r)}\n'
 			}
 		}
