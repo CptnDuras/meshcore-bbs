@@ -54,6 +54,22 @@ pub fn (mut t McTrace) attach() {
 	t.tag = u32(time.now().unix_nano())
 }
 
+// contacts asks the radio for its contact list now and keeps the repeaters that have a full 6 byte key.
+pub fn (mut t McTrace) contacts() ![]Repeater {
+	all := t.mc.get_contacts(0, 8000)!
+	mut out := []Repeater{}
+	for c in all {
+		id := c.pubkey_prefix.to_lower()
+		if c.contact_type == u8(contact_type_repeater) && id.len == 12 {
+			out << Repeater{
+				id:   id
+				name: c.adv_name
+			}
+		}
+	}
+	return out
+}
+
 // discover sends one zero-hop request and gathers the answers that carry its tag, keeping the last of any node that answers twice.
 pub fn (mut t McTrace) discover() ![]Neighbour {
 	t.tag++
