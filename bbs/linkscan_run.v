@@ -17,6 +17,9 @@ const scan_gap_secs = 4
 
 const contact_type_repeater = 2
 
+// A name heard in a path is only used to find a repeater if it has at least this many hex digits (2 bytes).
+const min_path_name_len = 4
+
 // TraceReply is what a trace brought back: the time it took and the SNR heard at each hop. An error means nothing came back in time.
 pub struct TraceReply {
 pub:
@@ -39,6 +42,8 @@ mut:
 	trace(hash_size int, hashes []u8) !TraceReply
 	// discover asks every repeater in direct range to answer, and returns whoever did within a few seconds
 	discover() ![]Neighbour
+	// contacts reads the repeaters out of the radio's contact list as it is right now
+	contacts() ![]Repeater
 }
 
 // scan_due says whether one of the four daily slots has just come and no scan has been asked for since it. tz_offset is local time minus UTC in seconds.
@@ -184,23 +189,70 @@ fn (mut r LinkScanRunner) run_route_test(now i64, mut store Store, mut radio Tra
 
 // direct_pass asks the repeaters in direct range to answer and records the SNR both ways of each of those links. No repeater is between us, so
 // these readings are plain measurements, not something worked out from a trace.
-fn (r &LinkScanRunner) direct_pass(now i64, mut store Store, mut radio TraceRadio) {
+fn (r &LinkScanRunner) direct_pass(now i64, mut store Store, mut radio TraceRadio) []Neighbour {
 	heard := radio.discover() or {
 		r.log('[links] direct discover failed: ${err}')
-		return
+		return []Neighbour{}
 	}
 	for n in heard {
 		store.record_link_hop(n.id, link_self, n.heard_snr, now) or {}
 		store.record_link_hop(link_self, n.id, n.their_snr, now) or {}
 	}
 	r.log('[links] ${heard.len} repeater(s) answered a direct discover')
+	return heard
+}
+
+// live_repeaters is the list a scan covers, built from what the radio knows right now and not from the copy of its contacts the database has
+// kept since the first advert: the radio's contacts as they stand, whoever answered the direct discover, and every name of 2 bytes or more seen in
+// a heard path that none of those account for (a repeater that never advertised to us can still be probed by its name). names only gives a
+// friendly name to a key that has none. Shorter path names are too vague to aim a probe at.
+pub fn live_repeaters(contacts []Repeater, neighbours []Neighbour, heard []SeenPair, names []NodeName) []Repeater {
+	mut known := map[string]string{}
+	for n in names {
+		known[n.pubkey_prefix.to_lower()] = n.name
+	}
+	mut out := []Repeater{}
+	mut have := map[string]bool{}
+	for c in contacts {
+		if c.id !in have {
+			have[c.id] = true
+			out << c
+		}
+	}
+	for n in neighbours {
+		if n.id !in have {
+			have[n.id] = true
+			out << Repeater{
+				id:   n.id
+				name: known[n.id] or { '' }
+			}
+		}
+	}
+	for p in heard {
+		for name in [p.a, p.b] {
+			if name.len < min_path_name_len || name in have || out.any(it.id.starts_with(name)) {
+				continue
+			}
+			have[name] = true
+			out << Repeater{
+				id: name
+			}
+		}
+	}
+	return out
 }
 
 fn (mut r LinkScanRunner) begin(id int, now i64, mut store Store, mut radio TraceRadio) {
 	r.before_start()
-	r.direct_pass(now, mut store, mut radio)
+	neighbours := r.direct_pass(now, mut store, mut radio)
 	pairs := store.list_path_pairs()
-	r.repeater = repeaters_from_names(store.list_node_names(8000))
+	names := store.list_node_names(8000)
+	contacts := radio.contacts() or {
+		r.log('[links] could not read the radio contacts (${err}), using the saved list')
+		repeaters_from_names(names)
+	}
+	r.repeater = live_repeaters(contacts, neighbours, pairs, names)
+	r.log('[links] repeaters: ${contacts.len} in the radio contacts, ${neighbours.len} answered discover, ${r.repeater.len} in all')
 	observed := candidate_edges(pairs, r.repeater)
 	r.scanner = new_scanner(r.repeater, observed, scan_max_probes)
 	r.scan_id = id

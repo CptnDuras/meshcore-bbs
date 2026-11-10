@@ -8,11 +8,16 @@ struct MeshLink {
 }
 
 const fake_ids = ['aa1111111111', 'bb2222222222', 'cc3333333333']
+const fake_repeaters = [Repeater{'aa1111111111', 'Alpha'}, Repeater{'bb2222222222', 'Bravo'},
+	Repeater{'cc3333333333', 'Charlie'}]
 
 struct FakeRadio {
 	links map[string]MeshLink
 	// who answers a direct discover
 	neighbours []Neighbour
+	// what the radio's contact list holds (the three repeaters of seed_names unless a test says otherwise), and whether reading it fails
+	contact_list    []Repeater = fake_repeaters
+	contacts_broken bool
 mut:
 	sent [][]u8
 }
@@ -41,6 +46,13 @@ fn (mut f FakeRadio) trace(hash_size int, hashes []u8) !TraceReply {
 
 fn (mut f FakeRadio) discover() ![]Neighbour {
 	return f.neighbours
+}
+
+fn (mut f FakeRadio) contacts() ![]Repeater {
+	if f.contacts_broken {
+		return error('radio busy')
+	}
+	return f.contact_list
 }
 
 fn contact(id string, name string, kind int, advert i64) NodeName {
@@ -97,6 +109,52 @@ fn test_repeaters_from_names_keeps_every_repeater_whatever_its_advert_time() {
 		contact('ff6666666666', 'NoTime', 2, 0)] // advert time unknown
 	reps := repeaters_from_names(names)
 	assert reps.map(it.id) == ['aa1111111111', 'dd4444444444', 'ff6666666666']
+}
+
+fn test_live_repeaters_takes_the_radio_not_the_saved_list() {
+	// the saved list still has an old copy of a repeater the radio no longer holds
+	names := [contact('aa1111111111', 'Alpha', 2, 5), contact('dd4444444444', 'Gone', 2, 5)]
+	got := live_repeaters([Repeater{'aa1111111111', 'Alpha'}], [], [], names)
+	assert got.map(it.id) == ['aa1111111111']
+}
+
+fn test_live_repeaters_adds_neighbours_and_unexplained_path_names() {
+	names := [contact('bb2222222222', 'Bravo', 2, 5)]
+	contacts := [Repeater{'aa1111111111', 'Alpha'}]
+	neighbours := [Neighbour{'bb2222222222', 1.0, 2.0}, Neighbour{'aa1111111111', 3.0, 4.0}]
+	heard := [SeenPair{'aa11', 'dabb', 3, 0}, // aa11 is already Alpha; dabb is new
+	SeenPair{'19', 'dabb', 2, 0}, // one byte: too vague
+	SeenPair{'dabb', 'bb22', 1, 0}, // seen again, and bb22 is already a neighbour
+	SeenPair{'ee55e1ee', 'cc', 1, 0}] // a 4 byte name nobody has: its own repeater
+	got := live_repeaters(contacts, neighbours, heard, names)
+	assert got.map(it.id) == ['aa1111111111', 'bb2222222222', 'dabb', 'ee55e1ee']
+	assert got[1].name == 'Bravo' // a neighbour takes its name from the saved names
+}
+
+fn test_a_scan_covers_the_radios_contacts_and_falls_back_when_it_cannot_read_them() {
+	now := i64(1794787200 + 5 * 3600)
+	mut s := new_run_store()
+	seed_names(mut s, now)
+	// the radio only holds Alpha now: only Alpha is scanned
+	mut radio := FakeRadio{
+		contact_list: [Repeater{'aa1111111111', 'Alpha'}]
+		links:        {
+			edge_key(link_self, 'aa1111111111'): MeshLink{100, 9.0}
+		}
+	}
+	mut r := LinkScanRunner{
+		gap_secs: 0
+	}
+	s.request_link_scan('sysop', now)!
+	run_to_end(mut r, mut s, mut radio, now)
+	assert s.recent_link_scans(1)[0].repeaters == 1
+	// a radio that cannot give its contacts: the saved names stand in
+	mut busy := FakeRadio{
+		contacts_broken: true
+	}
+	s.request_link_scan('sysop', now + 1000)!
+	run_to_end(mut r, mut s, mut busy, now + 1000)
+	assert s.recent_link_scans(1)[0].repeaters == 3
 }
 
 fn test_probe_hashes_takes_the_first_bytes_of_each_id() {
@@ -308,7 +366,9 @@ fn test_a_slot_starts_a_scan_by_itself_once() {
 fn test_a_scan_with_no_repeaters_finishes_at_once() {
 	now := i64(1794787200 + 5 * 3600)
 	mut s := new_run_store()
-	mut radio := FakeRadio{}
+	mut radio := FakeRadio{
+		contact_list: []Repeater{}
+	}
 	mut r := LinkScanRunner{
 		gap_secs: 0
 	}
